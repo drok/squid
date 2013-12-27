@@ -1,5 +1,6 @@
 01-cf.data.debian.patch
 02-makefile-defaults.patch
 15-cachemgr-default-config.patch
+16-ipc-statedir.patch
 90-cf.data.ubuntu.patch
 99-ubuntu-ssl-cert-snakeoil.patch

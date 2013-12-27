@@ -1,19 +1,17 @@
 Author: Luigi Gangitano <luigi@debian.org>
 Description: Default configuration file for debian
-Index: squid3-3.1.18/src/cf.data.pre
-===================================================================
---- squid3-3.1.18.orig/src/cf.data.pre	2011-12-26 22:10:23.000000000 +0100
-+++ squid3-3.1.18/src/cf.data.pre	2011-12-26 22:35:01.000000000 +0100
-@@ -178,7 +178,7 @@
+--- a/src/cf.data.pre
++++ b/src/cf.data.pre
+@@ -327,7 +327,7 @@
  	If you want to use the traditional NCSA proxy authentication, set
  	this line to something like
  
--	auth_param basic program @DEFAULT_PREFIX@/libexec/ncsa_auth @DEFAULT_PREFIX@/etc/passwd
-+	auth_param basic program @DEFAULT_PREFIX@/lib/squid3/ncsa_auth @DEFAULT_PREFIX@/etc/passwd
+-	auth_param basic program @DEFAULT_PREFIX@/libexec/basic_ncsa_auth @DEFAULT_PREFIX@/etc/passwd
++	auth_param basic program @DEFAULT_PREFIX@/lib/squid3/basic_ncsa_auth @DEFAULT_PREFIX@/etc/passwd
  
  	"utf8" on|off
- 	HTTP uses iso-latin-1 as characterset, while some authentication
-@@ -246,7 +246,7 @@
+ 	HTTP uses iso-latin-1 as character set, while some authentication
+@@ -400,7 +400,7 @@
  	If you want to use a digest authenticator, set this line to
  	something like
  
@@ -21,26 +19,28 @@ Index: squid3-3.1.18/src/cf.data.pre
 +	auth_param digest program @DEFAULT_PREFIX@/lib/squid3/digest_pw_auth @DEFAULT_PREFIX@/etc/digpass
  
  	"utf8" on|off
- 	HTTP uses iso-latin-1 as characterset, while some authentication
-@@ -308,7 +308,7 @@
+ 	HTTP uses iso-latin-1 as character set, while some authentication
+@@ -477,6 +477,9 @@
  	of type proxy_auth.  By default, the NTLM authenticator_program
  	is not used.
  
--	auth_param ntlm program @DEFAULT_PREFIX@/bin/ntlm_auth
-+	auth_param ntlm program @DEFAULT_PREFIX@/lib/squid3/ntlm_auth
++	NOTE: In Debian the ntlm_auth program is distributed in the winbindd package
++	      which is required for this auth scheme to work
++
+ 	auth_param ntlm program /usr/bin/ntlm_auth
  
- 	"children" numberofchildren
- 	The number of authenticator processes to spawn (no default).
-@@ -343,7 +343,7 @@
+ 	"children" numberofchildren [startup=N] [idle=N]
+@@ -518,6 +521,9 @@
  	The only supported program for this role is the ntlm_auth
  	program distributed as part of Samba, version 4 or later.
  
--	auth_param negotiate program @DEFAULT_PREFIX@/bin/ntlm_auth --helper-protocol=gss-spnego
-+	auth_param negotiate program @DEFAULT_PREFIX@/lib/squid3/ntlm_auth --helper-protocol=gss-spnego
++	NOTE: In Debian the ntlm_auth program is distributed in the winbindd package
++	      which is required for this auth scheme to work
++
+ 	auth_param negotiate program /usr/bin/ntlm_auth --helper-protocol=gss-spnego
  
- 	"children" numberofchildren
- 	The number of authenticator processes to spawn (no default).
-@@ -761,11 +761,11 @@
+ 	"children" numberofchildren [startup=N] [idle=N]
+@@ -1009,11 +1015,11 @@
  # Example rule allowing access from your local networks.
  # Adapt to list your (internal) IP networks from where browsing
  # should be allowed
@@ -57,7 +57,7 @@ Index: squid3-3.1.18/src/cf.data.pre
  
  acl SSL_ports port 443
  acl Safe_ports port 80		# http
-@@ -924,7 +924,7 @@
+@@ -1194,7 +1200,7 @@
  # Example rule allowing access from your local networks.
  # Adapt localnet in the ACL section to list your (internal) IP networks
  # from where browsing should be allowed
@@ -66,7 +66,7 @@ Index: squid3-3.1.18/src/cf.data.pre
  http_access allow localhost
  
  # And finally deny all other access to this proxy
-@@ -2845,7 +2845,7 @@
+@@ -3889,7 +3895,7 @@
  
  NAME: logfile_rotate
  TYPE: int
@@ -75,22 +75,24 @@ Index: squid3-3.1.18/src/cf.data.pre
  LOC: Config.Log.rotateNumber
  DOC_START
  	Specifies the number of logfile rotations to make when you
-@@ -2864,6 +2864,9 @@
+@@ -3908,6 +3914,9 @@
  
- 	Note, from Squid-3.1 this option has no effect on the cache.log,
- 	that log can be rotated separately by using debug_options
+ 	Note, from Squid-3.1 this option is only a default for cache.log,
+ 	that log can be rotated separately by using debug_options.
 +
-+ 	Note2, for Debian/Linux the default of logfile_rotate is
-+ 	zero, since it includes external logfile-rotation methods.
++	Note2, for Debian/Linux the default of logfile_rotate is
++	zero, since it includes external logfile-rotation methods.
  DOC_END
  
  NAME: emulate_httpd_log
-@@ -4285,7 +4288,7 @@
- NAME: visible_hostname
- TYPE: string
- LOC: Config.visibleHostname
--DEFAULT: none
-+DEFAULT: localhost
- DOC_START
- 	If you want to present a special hostname in error messages, etc,
- 	define this.  Otherwise, the return value of gethostname()
+@@ -7982,8 +7991,8 @@
+ 
+ 	WARNING:
+ 	  This option will restrict the situations under which IPv6
+-	  connectivity is used (and tested). Hiding network problems
+-	  which would otherwise be detected and warned about.
++	  connectivity is used (and tested), potentially hiding network
++	  problems which would otherwise be detected and warned about.
+ DOC_END
+ 
+ NAME: ipcache_size

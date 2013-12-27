@@ -1,7 +1,6 @@
-diff -Naurp squid-3.1.15.orig/src/cf.data.pre squid-3.1.15/src/cf.data.pre
---- squid-3.1.15.orig/src/cf.data.pre	2011-08-28 03:53:14.000000000 -0400
-+++ squid-3.1.15/src/cf.data.pre	2011-11-10 11:45:59.322157017 -0500
-@@ -1990,6 +1990,19 @@ DOC_START
+--- a/src/cf.data.pre
++++ b/src/cf.data.pre
+@@ -2728,6 +2728,19 @@ DOC_START
  			If 'sslkey' is not specified 'sslcert' is assumed to
  			reference a combined file containing both the
  			certificate and the key.
@@ -19,5 +18,5 @@ diff -Naurp squid-3.1.15.orig/src/cf.data.pre squid-3.1.15/src/cf.data.pre
 +
 +	for testing.
  	
- 	sslversion=1|2|3|4
+ 	sslversion=1|2|3|4|5|6
  			The SSL version to use when connecting to this peer

@@ -1,3 +1,394 @@
+squid3 (3.4.1-BZR.1ubuntu1) precise; urgency=low
+
+  * Package Bazaar branch bzr/3.4
+
+ -- Radu Hociung <radu@ohmi.org>  Wed, 25 Dec 2013 02:39:43 -0500
+
+squid3 (3.3.8-1ubuntu3) saucy; urgency=low
+
+  * d/tests/squid: Disable seccomp sandboxing in vsftpd until it works
+    reliably (http://pad.lv/1219857), restart vsftpd using service
+    command.
+
+ -- James Page <james.page@ubuntu.com>  Mon, 02 Sep 2013 15:50:41 +0100
+
+squid3 (3.3.8-1ubuntu2) saucy; urgency=low
+
+  * d/usr.sbin.squid3: Update apparmor profile to allow pinger process to
+    create and use ICMP ports for ipv4/ipv6. 
+
+ -- James Page <james.page@ubuntu.com>  Mon, 02 Sep 2013 11:06:54 +0100
+
+squid3 (3.3.8-1ubuntu1) saucy; urgency=low
+
+  * Merge from Debian unstable, remaining changes:
+    + debian/control:
+      - Update maintainer.
+      - Suggests apparmor (>= 2.3)
+      - Depends on ssl-cert ((>= 1.0-11ubuntu1), autopkgtests
+    + debian/squid3.upstart
+      - Move ulimit command to script section so that it applies
+        to the started squid daemon. Thanks to Timur Irmatov (LP: 986159)
+      - Work around squid not handling SIGHUP by adding respawn to
+        upstart job. (LP: 978356)
+    + debian/NEWS.Debian: Rename NEWS.debian, add note regarding squid3
+      transition in 12.04 (LP: 924739)
+    + debian/rules
+      - Re-enable all hardening options lost in the squid->squid3
+        transition (LP: 986314)
+    + squid3.resolvconf, debian/squid3.postinst, debian/squid3.postrm,
+      debian/squid3.preinst, debian/squid3.prerm:
+      - Convert init script to upstart
+    + debian/patches/99-ubuntu-ssl-cert-snakeoil:
+      - Use snakeoil certificates.
+    + debian/logrotate
+      - Use sar-reports rather than sarg-maint. (LP: 26616)
+    + debian/patches/90-cf.data.ubuntu.dpatch:
+      - Add an example refresh pattern for debs.
+        (foundations-lucid-local-report spec)
+    + Add disabled by default AppArmor profile (LP: 497790)
+      - debian/squid3.upstart: load profile in pre-start stanza
+      - add debian/usr.sbin.squid3 profile
+      - debian/rules:
+        + install debian/usr.sbin.squid3, etc/apparmor.d/force-complain and
+          etc/apparmor.d/disable into $(INSTALLDIR)
+        + use dh_apparmor
+      - debian/squid3.install: install etc/apparmor.d/disable, force-complain
+        and usr.sbin.squid3
+      - debian/squid3.preinst: disable profile on clean install or upgrades
+        from earlier than when we shipped the profile
+    + debian/tests:
+      - Add autopkgtests.
+  * d/control: Add dependency package for squid -> squid3 (LP: #1211942).
+  * d/control: Add dh-apparmor to BD's.
+
+ -- James Page <james.page@ubuntu.com>  Wed, 14 Aug 2013 09:03:55 +0100
+
+squid3 (3.3.8-1) unstable; urgency=high
+
+  * Urgency high due to security fixes
+
+  * New upstream release
+    - Fixes security issues (Closes: #716743)
+      + Buffer overflow in HTTP request handling (Ref: SQUID-2013:2,
+        CVE-2013-4115)
+      + DoS in request processing (Ref: SQUID-2013:3, CVE-2013-4123)
+    - Includes PNG image used in error pages, with new copyright assignement
+      (Closes: #683255)
+
+  * Added /var/run/squid3 dir to host sockets in SMP configuration
+    (Closes: #710126)
+
+  * debian/control
+    - Bumped Standard-Version to 3.9.4, no change needed
+
+ -- Luigi Gangitano <luigi@debian.org>  Sun, 21 Jul 2013 18:28:36 +0200
+
+squid3 (3.3.4-1ubuntu1) saucy; urgency=low
+
+  * Merge from Debian unstable (LP: #1199883).  Remaining changes:
+    + debian/control:
+      - Update maintainer.
+      - Suggests apparmor (>= 2.3)
+      - Depends on ssl-cert ((>= 1.0-11ubuntu1), autopkgtests
+    + debian/squid3.upstart
+      - Move ulimit command to script section so that it applies
+        to the started squid daemon. Thanks to Timur Irmatov (LP: 986159)
+      - Work around squid not handling SIGHUP by adding respawn to
+        upstart job. (LP: 978356)
+    + debian/NEWS.Debian: Rename NEWS.debian, add note regarding squid3
+      transition in 12.04 (LP: 924739)
+    + debian/rules
+      - Re-enable all hardening options lost in the squid->squid3
+        transition (LP: 986314)
+    + squid3.resolvconf, debian/squid3.postinst, debian/squid3.postrm,
+      debian/squid3.preinst, debian/squid3.prerm:
+      - Convert init script to upstart
+    + debian/patches/99-ubuntu-ssl-cert-snakeoil:
+      - Use snakeoil certificates.
+    + debian/logrotate
+      - Use sar-reports rather than sarg-maint. (LP: 26616)
+    + debian/patches/90-cf.data.ubuntu.dpatch:
+      - Add an example refresh pattern for debs.
+        (foundations-lucid-local-report spec)
+    + Add disabled by default AppArmor profile (LP: 497790)
+      - debian/squid3.upstart: load profile in pre-start stanza
+      - add debian/usr.sbin.squid3 profile
+      - debian/rules:
+        + install debian/usr.sbin.squid3, etc/apparmor.d/force-complain and
+          etc/apparmor.d/disable into $(INSTALLDIR)
+        + use dh_apparmor
+      - debian/squid3.install: install etc/apparmor.d/disable, force-complain
+        and usr.sbin.squid3
+      - debian/squid3.preinst: disable profile on clean install or upgrades
+        from earlier than when we shipped the profile
+    + debian/tests:
+      - Add autopkgtests.
+
+  * Dropped:
+    - debian/patches: dropped patches, superseded by new release:
+      + 98-CVE-2012-5643.patch
+      + 99-lp1117517_r12473.patch
+    - debian/rules: fix FTBFS, removed --with-cppunit-basedir flag,
+      included in Debian.
+    - debian/control: Dropped transitional packages from squid, no
+      longer required.
+
+  * Refreshed patches:
+    - 01-cf.data.debian.patch
+    - 02-makefile-defaults.patch
+    - 15-cachemgr-default-config.patch
+
+  * debian/tests/test-squid.py: fixed case problem with ftp test
+
+ -- Yolanda Robla <yolanda.robla@canonical.com>  Wed, 10 Jul 2013 17:12:42 +0200
+
+squid3 (3.3.4-1) unstable; urgency=low
+
+  * New upstream release
+    - Added support for SHA passwords in ncsa_auth (Closes: #652010)
+
+  * debian/squid3.lintian-overrides
+    - Added override for pinger setuid bin
+
+  * debian/watch
+    - Fixed pattern to skip the last dot
+
+  * debian/rules
+    - Removed reference to cppunit-basedir
+
+ -- Luigi Gangitano <luigi@debian.org>  Mon, 06 May 2013 16:46:33 +0200
+
+squid3 (3.3.3-2) unstable; urgency=low
+
+  I would like to thank Amos Jeffries <squid3@treenet.co.nz> for his help
+  with this release.
+
+  * debian/control
+    - Added Build-Depend on pkg-config to solve FTBFS when ecap is enabled
+      (Closes: #706025)
+    - Fixed package descriptions
+    - Added Build-Depend on libnetfilter-conntrack-dev
+    - Added Suggests on winbindd for NTLM authentication
+
+  * debian/patches/01-cf.data.debian.patch
+    - Removed change to visible_hostname defaut value (Closes: #705983)
+    - Fixed path of ntlm_auth helper in example
+
+  * debian/rules
+    - Removed --enable-arp-acl options obsoleted by --enable-eui
+    - Fixed FTBFS on hurd due to missing netfilter support
+    - Enabled Rock store type support
+    - Added SETUID bit to pinger program
+
+  * debian/watch
+    - Fixed pattern to match all the released versions of 3.3 
+
+ -- Luigi Gangitano <luigi@debian.org>  Tue, 23 Apr 2013 15:38:39 +0200
+
+squid3 (3.3.3-1) unstable; urgency=low
+
+  * New upstream release (Closes: #694633, #701799, #702540)
+    - Removed upstream patches
+      + debian/patches/20-ipv6-fix
+      + debian/patches/30-CVE-2012-5643-CVE-2013-0189.patch
+      + debian/patches/fix-701123-regression-in-cachemgr.patch
+    - Includes upstream fix for CVE-2009-0801 (Closes: #521052)
+    - Includes upstream fix for rejection of benign request containing variants
+      of double CR (Closes: #669148)
+
+  * debian/control
+    - Added dependency on libecap2-dev
+    - Added squid-purge package
+
+  * debian/source
+    - Enabled ECAP support
+    - Fixed configure invocation to match new syntax
+    - Removed unneeded rename of helper man pages
+    - Fixed list of helpers to build, adding fake agents (Closes: #644280)
+      and negotiate wrapper (Closes: #656304)
+
+  * debian/watch
+    - Updated for 3.3
+
+  * debian/squid3.logrotate
+    - Added check for existing binary in logrotate script (Closes: #703954)
+
+ -- Luigi Gangitano <luigi@debian.org>  Sun, 21 Apr 2013 23:51:11 +0200
+
+squid3 (3.1.20-2.2) unstable; urgency=low
+
+  * Non-maintainer upload.
+  * Add fix-701123-regression-in-cachemgr.patch patch.
+    Fix missing bits in the fix for CVE-2012-5643 and CVE-2013-0189 causing
+    cachemgr.cgi crashing when authentication credentials are supplied.
+    Thanks to Amos Jeffries <amos@treenet.co.nz> (Closes: #701123)
+
+ -- Salvatore Bonaccorso <carnil@debian.org>  Sat, 23 Feb 2013 13:44:48 +0100
+
+squid3 (3.1.20-2.1) unstable; urgency=high
+
+  * Non-maintainer upload
+
+  * Urgency high due to security fixes
+
+  * debian/patches/30-CVE-2012-5643-CVE-2013-0189.patch
+    - Added upstream fix for squid-cgi (cachemgr) memory leaks and denial of
+      service vulnerability (Closes: #696187)
+
+ -- Michael Stapelberg <stapelberg@debian.org>  Tue, 05 Feb 2013 23:16:27 +0100
+
+squid3 (3.1.20-2) unstable; urgency=low
+
+  * debian/patches/20-ipv6-fix
+    - Added upstream fix for squid not working when IPv6 is not loaded
+      (Closes: #660489)
+
+ -- Luigi Gangitano <luigi@debian.org>  Thu, 06 Dec 2012 20:02:56 +0100
+
+squid3 (3.1.20-1ubuntu7) saucy; urgency=low
+
+  * debian/tests: Run ftp tests against local vsftpd instead of ftp.ubuntu.com.
+
+ -- Yolanda Robla <yolanda.robla@canonical.com>  Mon, 17 Jun 2013 11:00:17 +0200
+
+squid3 (3.1.20-1ubuntu6) saucy; urgency=low
+
+  * debian/tests: Fix start/stop of squid3.
+
+ -- Yolanda Robla <yolanda.robla@canonical.com>  Mon, 10 Jun 2013 10:30:33 +0200
+
+squid3 (3.1.20-1ubuntu5) saucy; urgency=low
+
+  * debian/rules: fix FTBFS, removed --with-cppunit-basedir flag
+
+ -- Yolanda Robla <yolanda.robla@canonical.com>  Mon, 27 May 2013 14:50:11 +0200
+
+squid3 (3.1.20-1ubuntu4) saucy; urgency=low
+
+  * debian/tests: Add autopkgtest.
+
+ -- Yolanda <yolanda.robla@canonical.com>  Mon, 27 May 2013 11:24:35 +0200
+
+squid3 (3.1.20-1ubuntu3) raring-proposed; urgency=low
+
+  * fix FTBFS with newer glibc (LP: #1117517)
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Wed, 06 Feb 2013 11:37:29 -0600
+
+squid3 (3.1.20-1ubuntu2) raring-proposed; urgency=low
+
+  [ Seth Arnold ]
+  * SECURITY UPDATE: denial of service via cachemgr.cgi insufficient input
+    validation
+    - debian/patches/98-CVE-2012-5643.patch: modify cachemgr.cc to properly
+      free memory and handle input in chunks
+    - Based on
+      http://www.squid-cache.org/Versions/v3/3.1/changesets/SQUID-2012_1.patch
+    - CVE-2012-5643
+    - CVE-2013-0189
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Wed, 06 Feb 2013 09:56:53 -0600
+
+squid3 (3.1.20-1ubuntu1) quantal; urgency=low
+
+  * Merge from Debian testing (LP: #1016560).  Remaining changes:
+    + debian/control:
+      - Update maintainer.
+      - Suggests apparmor (>= 2.3)
+      - Depends on ssl-cert ((>= 1.0-11ubuntu1)
+      - Add transitional dummy packages
+    + debian/squid3.upstart
+      - Move ulimit command to script section so that it applies
+        to the started squid daemon. Thanks to Timur Irmatov (LP: 986159)
+      - Work around squid not handling SIGHUP by adding respawn to
+        upstart job. (LP: 978356)
+    + debian/NEWS.Debian: Rename NEWS.debian, add note regarding squid3
+      transition in 12.04 (LP: 924739) 
+    + debian/rules
+      - Re-enable all hardening options lost in the squid->squid3
+        transition (LP: 986314)
+    + squid3.resolvconf, debian/squid3.postinst, debian/squid3.postrm,
+      debian/squid3.preinst, debian/squid3.prerm:
+      - Convert init script to upstart
+    + debian/patches/99-ubuntu-ssl-cert-snakeoil:
+      - Use snakeoil certificates.
+    + debian/logrotate
+      - Use sar-reports rather than sarg-maint. (LP: 26616)
+    + debian/patches/90-cf.data.ubuntu.dpatch:
+      - Add an example refresh pattern for debs.
+        (foundations-lucid-local-report spec)
+    + Add disabled by default AppArmor profile (LP: 497790)
+      - debian/squid3.upstart: load profile in pre-start stanza
+      - add debian/usr.sbin.squid3 profile
+      - debian/rules:
+        + install debian/usr.sbin.squid3, etc/apparmor.d/force-complain and
+          etc/apparmor.d/disable into $(INSTALLDIR)
+        + use dh_apparmor
+      - debian/squid3.install: install etc/apparmor.d/disable, force-complain
+        and usr.sbin.squid3
+      - debian/squid3.preinst: disable profile on clean install or upgrades
+        from earlier than when we shipped the profile
+
+ -- Stefan Bader <stefan.bader@canonical.com>  Fri, 22 Jun 2012 14:18:00 +0200
+
+squid3 (3.1.20-1) unstable; urgency=low
+
+  * New upstream release
+
+  * debian/control
+    - Bumped Standard-Version to 3.9.3, no change needed
+    - Added missing dependency on dpkg-dev (>= 1.16.1~)
+
+  * debian/rules
+    - Enabled hardening options (Closes: #669684)
+
+  * debian/patches/01-cf.data.debian.patch
+    - Fixed minor typos in configuration file (Closes: #670832, #673350)
+
+ -- Luigi Gangitano <luigi@debian.org>  Mon, 18 Jun 2012 14:20:53 +0200
+
+squid3 (3.1.19-1ubuntu5) quantal; urgency=low
+
+  * d/squid3.upstart: Work around squid not handling SIGHUP by
+    adding respawn to upstart job. (LP: #978356)
+
+ -- Clint Byrum <clint@ubuntu.com>  Tue, 19 Jun 2012 15:35:19 -0700
+
+squid3 (3.1.19-1ubuntu4) quantal; urgency=low
+
+  * Add disabled by default AppArmor profile (LP: #497790)
+    - debian/squid3.upstart: load profile in pre-start stanza
+    - add debian/usr.sbin.squid3 profile
+    - debian/rules:
+      + install debian/usr.sbin.squid3, etc/apparmor.d/force-complain and
+        etc/apparmor.d/disable into $(INSTALLDIR)
+      + use dh_apparmor
+    - debian/control: suggests apparmor (>= 2.3)
+    - debian/squid3.install: install etc/apparmor.d/disable, force-complain
+      and usr.sbin.squid3
+    - debian/squid3.preinst: disable profile on clean install or upgrades
+      from earlier than when we shipped the profile
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Wed, 13 Jun 2012 11:32:14 -0500
+
+squid3 (3.1.19-1ubuntu3.1) quantal; urgency=low
+
+  * debian/rules: re-enable all hardening options lost in the
+    squid->squid3 transition (LP: #986314)
+  * debian/squid3.upstart: move ulimit command to script section
+    so that it applies to the started squid daemon. Thanks to Timur
+    Irmatov (LP: #986159)
+
+ -- Jamie Strandboge <jamie@ubuntu.com>  Wed, 13 Jun 2012 09:06:51 -0500
+
+squid3 (3.1.19-1ubuntu2) precise; urgency=low
+
+  * debian/NEWS.Debian: Rename NEWS.debian, add note regarding squid3
+    transition in 12.04 (LP: #924739) 
+
+ -- Adam Gandelman <adamg@canonical.com>  Thu, 12 Apr 2012 13:46:10 -0700
+
 squid3 (3.1.19-1ubuntu1) precise; urgency=low
 
   * Merge from Debian testing.  Remaining changes:

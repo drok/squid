@@ -1,0 +1,96 @@
+--- a/src/client_side_request.cc
++++ b/src/client_side_request.cc
+@@ -1318,7 +1318,8 @@
+                     // update the current working ClientHttpRequest fields
+                     safe_free(http->uri);
+                     http->uri = xstrdup(urlCanonical(new_request));
+-                    HTTPMSGUNLOCK(old_request);
++                    // HTTPMSGUNLOCK(old_request);
++                    http->requested = old_request; // Ie, The client requested... - if SSL bumped, the certificate for the requested, not redirected site is sent to the client
+                     http->request = new_request;
+                     HTTPMSGLOCK(http->request);
+                 } else {
+--- a/src/ssl/Makefile.am
++++ b/src/ssl/Makefile.am
+@@ -46,6 +46,7 @@
+ 	$(SSL_CRTD)
+ 
+ if USE_SSL_CRTD
+-ssl_crtd_SOURCES = ssl_crtd.cc certificate_db.cc certificate_db.h
++ssl_crtd_SOURCES = ssl_crtd.cc
++#  certificate_db.cc certificate_db.h
+ ssl_crtd_LDADD = libsslutil.la $(SSLLIB) $(COMPAT_LIB)
+ endif
+--- a/src/ssl/ssl_crtd.cc
++++ b/src/ssl/ssl_crtd.cc
+@@ -201,31 +201,11 @@
+     if (!request_message.parseRequest(certProperties, error))
+         throw std::runtime_error("Error while parsing the crtd request: " + error);
+ 
+-    Ssl::CertificateDb db(db_path, max_db_size, fs_block_size);
+-
+     Ssl::X509_Pointer cert;
+     Ssl::EVP_PKEY_Pointer pkey;
+-    std::string &cert_subject = certProperties.dbKey();
+-
+-    db.find(cert_subject, cert, pkey);
+ 
+-    if (cert.get()) {
+-        if (!Ssl::certificateMatchesProperties(cert.get(), certProperties)) {
+-            // The certificate changed (renewed or other reason).
+-            // Generete a new one with the updated fields.
+-            cert.reset(NULL);
+-            pkey.reset(NULL);
+-            db.purgeCert(cert_subject);
+-        }
+-    }
+-
+-    if (!cert || !pkey) {
+-        if (!Ssl::generateSslCertificate(cert, pkey, certProperties))
+-            throw std::runtime_error("Cannot create ssl certificate or private key.");
+-
+-        if (!db.addCertAndPrivateKey(cert, pkey, cert_subject) && db.IsEnabledDiskStore())
+-            throw std::runtime_error("Cannot add certificate to db.");
+-    }
++    if (!Ssl::generateSslCertificate(cert, pkey, certProperties))
++        throw std::runtime_error("Cannot create ssl certificate or private key.");
+ 
+     std::string bufferToWrite;
+     if (!Ssl::writeCertAndPrivateKeyToMemory(cert, pkey, bufferToWrite))
+@@ -288,15 +268,10 @@
+         }
+ 
+         if (create_new_db) {
+-            std::cout << "Initialization SSL db..." << std::endl;
+-            Ssl::CertificateDb::create(db_path);
+-            std::cout << "Done" << std::endl;
++            std::cout << "Initialization SSL not necessary - certs are created on demand" << std::endl;
+             exit(0);
+         }
+ 
+-        {
+-            Ssl::CertificateDb::check(db_path, max_db_size);
+-        }
+         // proccess request.
+         for (;;) {
+             char request[HELPER_INPUT_BUFFER];
+--- a/src/client_side_request.h
++++ b/src/client_side_request.h
+@@ -88,6 +88,7 @@
+     Comm::ConnectionPointer clientConnection;
+ 
+     HttpRequest *request;		/* Parsed URL ... */
++    HttpRequest *requested;		/* Original requested URL (pre-redirect), if different than request... */
+     char *uri;
+     char *log_uri;
+     String store_id; /* StoreID for transactions where the request member is nil */
+--- a/src/client_side.cc
++++ b/src/client_side.cc
+@@ -718,6 +718,7 @@
+     safe_free(log_uri);
+     safe_free(redirect.location);
+     range_iter.boundary.clean();
++    HTTPMSGUNLOCK(requested);
+     HTTPMSGUNLOCK(request);
+ 
+     if (client_stream.tail)

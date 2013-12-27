@@ -1,3 +1,9 @@
+squid3 (3.4.1-BZR.1ubuntu1ohmi1) precise; urgency=low
+
+  * Add OHMI Customizations
+
+ -- Radu Hociung <radu@ohmi.org>  Fri, 27 Dec 2013 16:10:36 -0500
+
 squid3 (3.4.1-BZR.1ubuntu1) precise; urgency=low
 
   * Package Bazaar branch bzr/3.4

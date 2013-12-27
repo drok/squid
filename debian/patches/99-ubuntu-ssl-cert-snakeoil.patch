@@ -1,0 +1,22 @@
+--- a/src/cf.data.pre
++++ b/src/cf.data.pre
+@@ -2728,6 +2728,19 @@ DOC_START
+ 			If 'sslkey' is not specified 'sslcert' is assumed to
+ 			reference a combined file containing both the
+ 			certificate and the key.
++
++	Notes:
++	
++	On Debian/Ubuntu systems a default snakeoil certificate is
++    available in /etc/ss and users can set:
++
++		cert=/etc/ssl/certs/ssl-cert-snakeoil.pem
++
++	and
++
++		key=/etc/ssl/private/ssl-cert-snakeoil.key
++
++	for testing.
+ 	
+ 	sslversion=1|2|3|4|5|6
+ 			The SSL version to use when connecting to this peer

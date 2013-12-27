@@ -1,0 +1,40 @@
+Author: Luigi Gangitano <luigi@debian.org>
+Description: Fix path for cachemgr.cgi default configuration file
+--- a/tools/Makefile.am
++++ b/tools/Makefile.am
+@@ -68,7 +68,7 @@
+ 
+ ## ##### cachemgr.cgi  #####
+ 
+-DEFAULT_CACHEMGR_CONFIG = $(sysconfdir)/cachemgr.conf
++DEFAULT_CACHEMGR_CONFIG = /etc/squid/cachemgr.conf
+ 
+ libexec_PROGRAMS = cachemgr$(CGIEXT)
+ 
+@@ -91,6 +91,7 @@
+ ## Shared
+ 
+ install-data-local:
++	test -z "/etc/squid" || $(MKDIR_P) "$(DESTDIR)/etc/squid"
+ 	$(INSTALL_DATA) $(srcdir)/cachemgr.conf $(DESTDIR)$(DEFAULT_CACHEMGR_CONFIG).default
+ 	@if test -f $(DESTDIR)$(DEFAULT_CACHEMGR_CONFIG) ; then \
+ 	        echo "$@ will not overwrite existing $(DESTDIR)$(DEFAULT_CACHEMGR_CONFIG)" ; \
+--- a/tools/Makefile.in
++++ b/tools/Makefile.in
+@@ -434,7 +434,7 @@
+ 	test_tools.cc \
+ 	time.cc
+ 
+-DEFAULT_CACHEMGR_CONFIG = $(sysconfdir)/cachemgr.conf
++DEFAULT_CACHEMGR_CONFIG = /etc/squid/cachemgr.conf
+ cachemgr__CGIEXT__SOURCES = cachemgr.cc \
+ 	stub_debug.cc \
+ 	test_tools.cc \
+@@ -1237,6 +1237,7 @@
+ 	$(SUBSTITUTE) < $(srcdir)/cachemgr.cgi.8.in > $@
+ 
+ install-data-local:
++	test -z "/etc/squid" || $(MKDIR_P) "$(DESTDIR)/etc/squid"
+ 	$(INSTALL_DATA) $(srcdir)/cachemgr.conf $(DESTDIR)$(DEFAULT_CACHEMGR_CONFIG).default
+ 	@if test -f $(DESTDIR)$(DEFAULT_CACHEMGR_CONFIG) ; then \
+ 	        echo "$@ will not overwrite existing $(DESTDIR)$(DEFAULT_CACHEMGR_CONFIG)" ; \

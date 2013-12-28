@@ -1,3 +1,9 @@
+squid3 (3.4.1-BZR.1ubuntu1ohmi2) precise; urgency=low
+
+  *  Enable sslbump
+
+ -- Radu Hociung <radu@ohmi.org>  Fri, 27 Dec 2013 17:29:27 -0500
+
 squid3 (3.4.1-BZR.1ubuntu1ohmi1) precise; urgency=low
 
   * Add OHMI Customizations

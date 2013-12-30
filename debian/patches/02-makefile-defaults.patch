@@ -2,7 +2,7 @@ Author: Luigi Gangitano <luigi@debian.org>
 Description: Change default file locations for debian
 --- a/src/Makefile.in
 +++ b/src/Makefile.in
-@@ -2802,7 +2802,7 @@
+@@ -2831,7 +2831,7 @@
  DEFAULT_PREFIX = $(prefix)
  DEFAULT_CONFIG_DIR = $(sysconfdir)
  DEFAULT_CONFIG_FILE = $(DEFAULT_CONFIG_DIR)/squid.conf

@@ -5,3 +5,4 @@
 90-cf.data.ubuntu.patch
 99-ubuntu-ssl-cert-snakeoil.patch
 999-ohmi-sslbump.patch
+990-debian-translations-testsuites.patch

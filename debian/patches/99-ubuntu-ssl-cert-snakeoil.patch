@@ -1,6 +1,6 @@
 --- a/src/cf.data.pre
 +++ b/src/cf.data.pre
-@@ -2728,6 +2728,19 @@ DOC_START
+@@ -2945,6 +2945,19 @@
  			If 'sslkey' is not specified 'sslcert' is assumed to
  			reference a combined file containing both the
  			certificate and the key.

@@ -1,0 +1,208 @@
+--- a/src/FwdState.cc
++++ b/src/FwdState.cc
+@@ -728,6 +728,7 @@
+                 }
+             }
+ 
++            debugs(83,5, "ERR_SECURE_CONNECT_FAIL at line: " << __LINE__);
+             ErrorState *const anErr = makeConnectingError(ERR_SECURE_CONNECT_FAIL);
+             anErr->xerrno = sysErrNo;
+             anErr->detail = errDetails;
+@@ -844,6 +845,7 @@
+             }
+         }
+ 
++        debugs(83,5, "ERR_SECURE_CONNECT_FAIL at line: " << __LINE__);
+         anErr = makeConnectingError(ERR_SECURE_CONNECT_FAIL);
+         anErr->detail = errDetails;
+         /*anErr->xerrno= Should preserved*/
+@@ -921,8 +923,7 @@
+     const CachePeer *peer = serverConnection()->getPeer();
+     int fd = serverConnection()->fd;
+ 
+-    if (peer) {
+-        assert(peer->use_ssl);
++    if (peer && peer->use_ssl) {
+         sslContext = peer->sslContext;
+     } else {
+         sslContext = Config.ssl_client.sslContext;
+--- a/src/client_side.cc
++++ b/src/client_side.cc
+@@ -2623,6 +2623,7 @@
+                 request->hier.note(peekerRequest->hier.tcpServer, request->GetHost());
+ 
+                 // Create an error object and fill it
++                debugs(33,5, "ERR_SECURE_CONNECT_FAIL at line: " __FILE__ << " : " << __LINE__);
+                 ErrorState *err = new ErrorState(ERR_SECURE_CONNECT_FAIL, Http::scServiceUnavailable, request);
+                 err->src_addr = clientConnection->remote;
+                 Ssl::ErrorDetail *errDetail = new Ssl::ErrorDetail(
+--- a/src/client_side_request.cc
++++ b/src/client_side_request.cc
+@@ -1514,15 +1514,17 @@
+     debugs(85, 4, "clientProcessRequest: " << RequestMethodStr(request->method) << " '" << uri << "'");
+ 
+     if (request->method == Http::METHOD_CONNECT && !redirect.status) {
++        logType = LOG_TCP_MISS;
+ #if USE_SSL
+         if (sslBumpNeeded()) {
+-            sslBumpStart();
++            debugs(85, 4, HERE << "starting tunnel with sslBump callback to: " << uri << "'");
++            tunnelStart(this, &out.size, &al->http.code, al, sslBumpStart, this);
++            // sslBumpStart();
+             return;
+         }
+ #endif
+-        logType = LOG_TCP_MISS;
+         getConn()->stopReading(); // tunnels read for themselves
+-        tunnelStart(this, &out.size, &al->http.code, al);
++        tunnelStart(this, &out.size, &al->http.code, al, NULL, NULL);
+         return;
+     }
+ 
+@@ -1559,6 +1561,7 @@
+ {
+     ClientHttpRequest *r = static_cast<ClientHttpRequest*>(data);
+     debugs(85, 5, HERE << "responded to CONNECT: " << r << " ? " << errflag);
++    // debugs(85, 5, HERE << "serverConnection = " << r->getConn()->serverConnection());
+ 
+     assert(r && cbdataReferenceValid(r));
+     r->sslBumpEstablish(errflag);
+@@ -1588,22 +1591,33 @@
+ #endif
+ 
+     assert(sslBumpNeeded());
+-    getConn()->switchToHttps(request, sslBumpNeed_);
++    if (!Comm::IsConnOpen(getConn()->pinning.serverConnection)) {
++      getConn()->switchToHttps(request, sslBumpNeed_);
++    }
+ }
+ 
+ void
+-ClientHttpRequest::sslBumpStart()
++ClientHttpRequest::sslBumpStart(const Comm::ConnectionPointer &serverConnection, void *data)
+ {
+-    debugs(85, 5, HERE << "Confirming " << Ssl::bumpMode(sslBumpNeed_) <<
+-           "-bumped CONNECT tunnel on FD " << getConn()->clientConnection);
+-    getConn()->sslBumpMode = sslBumpNeed_;
++    ClientHttpRequest *clientRequest = (ClientHttpRequest *)data;
++
++    debugs(85, 5, HERE << "Confirming " << Ssl::bumpMode(clientRequest->sslBumpNeed_) <<
++           "-bumped CONNECT tunnel on FD " << clientRequest->getConn()->clientConnection);
++    clientRequest->getConn()->sslBumpMode = clientRequest->sslBumpNeed_;
++    clientRequest->getConn()->setServerBump(new  Ssl::ServerBump(clientRequest->request));
++    httpsEstablish(serverConnection.
++  call FwdState::connectDone ?
++    // clientRequest->getConn()->getSslContextStart();
++    // serverConnection.getSslContextStart();
++    httpsCreate(serverConnection,
++    clientRequest->getConn()->httpsPeeked(serverConnection);
+ 
+     // send an HTTP 200 response to kick client SSL negotiation
+     // TODO: Unify with tunnel.cc and add a Server(?) header
+-    static const char *const conn_established = "HTTP/1.1 200 Connection established\r\n\r\n";
++    static const char *const conn_established = "HTTP/1.1 200 Connection Established\r\n\r\n";
+     AsyncCall::Pointer call = commCbCall(85, 5, "ClientSocketContext::sslBumpEstablish",
+-                                         CommIoCbPtrFun(&SslBumpEstablish, this));
+-    Comm::Write(getConn()->clientConnection, conn_established, strlen(conn_established), call, NULL);
++                                         CommIoCbPtrFun(&SslBumpEstablish, clientRequest));
++    Comm::Write(clientRequest->getConn()->clientConnection, conn_established, strlen(conn_established), call, NULL);
+ }
+ 
+ #endif
+--- a/src/tunnel.cc
++++ b/src/tunnel.cc
+@@ -86,6 +86,7 @@
+     TunnelStateData &operator =(const TunnelStateData &); // do not implement
+ 
+     class Connection;
++    static void tunnelStartShoveling(const Comm::ConnectionPointer &serverConnection, void *data);
+     static void ReadClient(const Comm::ConnectionPointer &, char *buf, size_t len, comm_err_t errcode, int xerrno, void *data);
+     static void ReadServer(const Comm::ConnectionPointer &, char *buf, size_t len, comm_err_t errcode, int xerrno, void *data);
+     static void WriteClientDone(const Comm::ConnectionPointer &, char *buf, size_t len, comm_err_t flag, int xerrno, void *data);
+@@ -102,6 +103,8 @@
+     HttpRequest::Pointer request;
+     AccessLogEntryPointer al;
+     Comm::ConnectionList serverDestinations;
++    void (*startedCB)(const Comm::ConnectionPointer &serverConnection, void *arg);
++    void *startedCB_arg;
+ 
+     const char * getHost() const {
+         return (server.conn != NULL && server.conn->getPeer() ? server.conn->getPeer()->host : request->GetHost());
+@@ -226,6 +229,8 @@
+ TunnelStateData::TunnelStateData() :
+         url(NULL),
+         request(NULL),
++        startedCB(TunnelStateData::tunnelStartShoveling),
++        startedCB_arg(this),
+         status_ptr(NULL),
+         connectRespBuf(NULL),
+         connectReqWriting(false)
+@@ -669,12 +674,18 @@
+  * Set the HTTP status for this request and sets the read handlers for client
+  * and server side connections.
+  */
+-static void
+-tunnelStartShoveling(TunnelStateData *tunnelState)
++void
++TunnelStateData::tunnelStartShoveling(const Comm::ConnectionPointer &serverConnection, void *data)
+ {
++    TunnelStateData *tunnelState = (TunnelStateData *)data;
+     assert(!tunnelState->waitingForConnectExchange());
+     *tunnelState->status_ptr = Http::scOkay;
+     if (cbdataReferenceValid(tunnelState)) {
++        // if (sslBumpNeeded()) {
++        //  sslBumpStart();
++        //  return;
++        // }
++
+         if (!tunnelState->server.len)
+             tunnelState->copyRead(tunnelState->server, TunnelStateData::ReadServer);
+         else
+@@ -700,7 +711,10 @@
+         return;
+     }
+ 
+-    tunnelStartShoveling(tunnelState);
++//    if (startedCB) {
++    tunnelState->startedCB(conn, tunnelState->startedCB_arg);
++//    } else
++//    tunnelStartShoveling(tunnelState);
+ }
+ 
+ /// Called when we are done writing CONNECT request to a peer.
+@@ -745,7 +759,7 @@
+     debugs(26, 3, HERE << server << ", tunnelState=" << tunnelState);
+ 
+     if (!tunnelState->clientExpectsConnectResponse())
+-        tunnelStartShoveling(tunnelState); // ssl-bumped connection, be quiet
++        tunnelState->startedCB(server, tunnelState->startedCB_arg); // ssl-bumped connection, be quiet
+     else {
+         AsyncCall::Pointer call = commCbCall(5,5, "tunnelConnectedWriteDone",
+                                              CommIoCbPtrFun(tunnelConnectedWriteDone, tunnelState));
+@@ -846,7 +860,7 @@
+ nfmark_t GetNfmarkToServer(HttpRequest * request);
+ 
+ void
+-tunnelStart(ClientHttpRequest * http, int64_t * size_ptr, int *status_ptr, const AccessLogEntryPointer &al)
++tunnelStart(ClientHttpRequest * http, int64_t * size_ptr, int *status_ptr, const AccessLogEntryPointer &al, void(*cb)(const Comm::ConnectionPointer&, void*), void *cbarg)
+ {
+     debugs(26, 3, HERE);
+     /* Create state structure. */
+@@ -892,12 +906,16 @@
+     tunnelState->status_ptr = status_ptr;
+     tunnelState->client.conn = http->getConn()->clientConnection;
+     tunnelState->al = al;
++    if (cb) {
++      tunnelState->startedCB = cb;
++      tunnelState->startedCB_arg = cbarg;
++    }
+ 
+     comm_add_close_handler(tunnelState->client.conn->fd,
+                            tunnelClientClosed,
+                            tunnelState);
+ 
+-    AsyncCall::Pointer timeoutCall = commCbCall(5, 4, "tunnelTimeout",
++     AsyncCall::Pointer timeoutCall = commCbCall(5, 4, "tunnelTimeout",
+                                      CommTimeoutCbPtrFun(tunnelTimeout, tunnelState));
+     commSetConnTimeout(tunnelState->client.conn, Config.Timeout.lifetime, timeoutCall);
+ 

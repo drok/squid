@@ -6,3 +6,4 @@
 99-ubuntu-ssl-cert-snakeoil.patch
 999-ohmi-sslbump.patch
 990-debian-translations-testsuites.patch
+999-fix-cache_log-to-syslog.patch

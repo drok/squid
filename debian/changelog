@@ -1,3 +1,23 @@
+squid3 (3.4.1-BZR.5ohmi1) precise; urgency=low
+
+  * Still reworking the syslog patch. The default cache_log had to
+    be set to none so the default cache.log file is not opened.
+  * 
+
+ -- Radu Hociung <radu@ohmi.org>  Sun, 19 Jan 2014 03:48:54 -0500
+
+squid3 (3.4.1-BZR.4ohmi1) precise; urgency=low
+
+  *  Rebuild because syslog patch was not active in 3ohmi1
+
+ -- Radu Hociung <radu@ohmi.org>  Sun, 19 Jan 2014 03:02:29 -0500
+
+squid3 (3.4.1-BZR.3ohmi1) precise; urgency=low
+
+  * Enable syslog output even in non-daemon mode if -s is given
+
+ -- Radu Hociung <radu@ohmi.org>  Thu, 16 Jan 2014 23:02:35 -0500
+
 squid3 (3.4.1-BZR.2ohmi2) precise; urgency=low
 
   * Change rev to 2ohmi2 so source can be packaged without upstream tarball 

@@ -1,0 +1,51 @@
+--- a/src/main.cc
++++ b/src/main.cc
+@@ -164,6 +164,7 @@
+ #endif
+ 
+ static char *opt_syslog_facility = NULL;
++static int opt_using_syslog = FALSE;
+ static int icpPortNumOverride = 1;	/* Want to detect "-u 0" */
+ static int configured_once = 0;
+ #if MALLOC_DBG
+@@ -546,6 +547,7 @@
+ #if HAVE_SYSLOG
+ 
+             _db_set_syslog(opt_syslog_facility);
++            opt_using_syslog = TRUE;
+ 
+             break;
+ 
+@@ -1478,7 +1480,7 @@
+     /* init comm module */
+     comm_init();
+ 
+-    if (opt_no_daemon) {
++    if (opt_no_daemon && opt_using_syslog == FALSE) {
+         /* we have to init fdstat here. */
+         fd_open(0, FD_LOG, "stdin");
+         fd_open(1, FD_LOG, "stdout");
+@@ -1930,7 +1932,7 @@
+ #endif
+ #if !XMALLOC_TRACE
+ 
+-    if (opt_no_daemon) {
++    if (opt_no_daemon && opt_using_syslog == FALSE) {
+         file_close(0);
+         file_close(1);
+         file_close(2);
+--- a/src/cf.data.pre
++++ b/src/cf.data.pre
+@@ -4321,10 +4321,10 @@
+ 
+ NAME: cache_log
+ TYPE: string
+-DEFAULT_IF_NONE: @DEFAULT_CACHE_LOG@
++DEFAULT: none
+ LOC: Debug::cache_log
+ DOC_START
+-	Squid administrative logging file.
++	Squid administrative logging file.  @DEFAULT_CACHE_LOG@
+ 
+ 	This is where general information about Squid behavior goes. You can
+ 	increase the amount of data logged to this file and how often it is

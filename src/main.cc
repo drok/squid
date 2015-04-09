@@ -164,6 +164,7 @@ void WINAPI WIN32_svcHandler(DWORD);
 #endif
 
 static char *opt_syslog_facility = NULL;
+static int opt_using_syslog = FALSE;
 static int icpPortNumOverride = 1;	/* Want to detect "-u 0" */
 static int configured_once = 0;
 #if MALLOC_DBG
@@ -546,6 +547,7 @@ mainParseOptions(int argc, char *argv[])
 #if HAVE_SYSLOG
 
             _db_set_syslog(opt_syslog_facility);
+            opt_using_syslog = TRUE;
 
             break;
 
@@ -1478,7 +1480,7 @@ SquidMain(int argc, char **argv)
     /* init comm module */
     comm_init();
 
-    if (opt_no_daemon) {
+    if (opt_no_daemon && opt_using_syslog == FALSE) {
         /* we have to init fdstat here. */
         fd_open(0, FD_LOG, "stdin");
         fd_open(1, FD_LOG, "stdout");
@@ -1930,7 +1932,7 @@ SquidShutdown()
 #endif
 #if !XMALLOC_TRACE
 
-    if (opt_no_daemon) {
+    if (opt_no_daemon && opt_using_syslog == FALSE) {
         file_close(0);
         file_close(1);
         file_close(2);

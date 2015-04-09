@@ -719,6 +719,7 @@ ClientHttpRequest::freeResources()
     safe_free(log_uri);
     safe_free(redirect.location);
     range_iter.boundary.clean();
+    HTTPMSGUNLOCK(requested);
     HTTPMSGUNLOCK(request);
 
     if (client_stream.tail)

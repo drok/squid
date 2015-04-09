@@ -88,6 +88,7 @@ public:
     Comm::ConnectionPointer clientConnection;
 
     HttpRequest *request;		/* Parsed URL ... */
+    HttpRequest *requested;		/* Original requested URL (pre-redirect), if different than request... */
     char *uri;
     char *log_uri;
     String store_id; /* StoreID for transactions where the request member is nil */

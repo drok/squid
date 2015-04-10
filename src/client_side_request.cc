@@ -848,11 +848,12 @@ ClientHttpRequest::noteAdaptationAclCheckDone(Adaptation::ServiceGroupPointer g)
 #if ICAP_CLIENT
     Adaptation::Icap::History::Pointer ih = request->icapHistory();
     if (ih != NULL) {
-        if (getConn() != NULL) {
+        if (getConn() != NULL && getConn()->clientConnection != NULL) {
             ih->rfc931 = getConn()->clientConnection->rfc931;
 #if USE_SSL
-            assert(getConn()->clientConnection != NULL);
-            ih->ssluser = sslGetUserEmail(fd_table[getConn()->clientConnection->fd].ssl);
+            if (getConn()->clientConnection->isOpen()) {
+                ih->ssluser = sslGetUserEmail(fd_table[getConn()->clientConnection->fd].ssl);
+            }
 #endif
         }
         ih->log_uri = log_uri;
@@ -1144,8 +1145,7 @@ clientInterpretRequestHeaders(ClientHttpRequest * http)
     else {
         req_hdr->delById(HDR_RANGE);
         req_hdr->delById(HDR_REQUEST_RANGE);
-        delete request->range;
-        request->range = NULL;
+        request->ignoreRange("neither HEAD nor GET");
     }
 
     if (req_hdr->has(HDR_AUTHORIZATION))
@@ -1273,17 +1273,17 @@ ClientRequestContext::clientRedirectDone(const HelperReply &reply)
 
             // TODO: change default redirect status for appropriate requests
             // Squid defaults to 302 status for now for better compatibility with old clients.
-            // HTTP/1.0 client should get 302 (Http::scMovedTemporarily)
+            // HTTP/1.0 client should get 302 (Http::scFound)
             // HTTP/1.1 client contacting reverse-proxy should get 307 (Http::scTemporaryRedirect)
             // HTTP/1.1 client being diverted by forward-proxy should get 303 (Http::scSeeOther)
-            Http::StatusCode status = Http::scMovedTemporarily;
+            Http::StatusCode status = Http::scFound;
             if (statusNote != NULL) {
                 const char * result = statusNote;
                 status = static_cast<Http::StatusCode>(atoi(result));
             }
 
             if (status == Http::scMovedPermanently
-                    || status == Http::scMovedTemporarily
+                    || status == Http::scFound
                     || status == Http::scSeeOther
                     || status == Http::scPermanentRedirect
                     || status == Http::scTemporaryRedirect) {
@@ -1813,7 +1813,7 @@ ClientHttpRequest::doCallouts()
             clientStreamNode *node = (clientStreamNode *)client_stream.tail->prev->data;
             clientReplyContext *repContext = dynamic_cast<clientReplyContext *>(node->data.getRaw());
             assert (repContext);
-            repContext->setReplyToStoreEntry(e);
+            repContext->setReplyToStoreEntry(e, "immediate SslBump error");
             errorAppendEntry(e, calloutContext->error);
             calloutContext->error = NULL;
             if (calloutContext->readNextRequest)

@@ -144,15 +144,15 @@ NotePairs::~NotePairs()
 }
 
 const char *
-NotePairs::find(const char *noteKey) const
+NotePairs::find(const char *noteKey, const char *sep) const
 {
     static String value;
     value.clean();
     for (Vector<NotePairs::Entry *>::const_iterator  i = entries.begin(); i != entries.end(); ++i) {
         if ((*i)->name.cmp(noteKey) == 0) {
             if (value.size())
-                value.append(", ");
-            value.append(ConfigParser::QuoteString((*i)->value));
+                value.append(sep);
+            value.append((*i)->value);
         }
     }
     return value.size() ? value.termedBuf() : NULL;
@@ -166,7 +166,7 @@ NotePairs::toString(const char *sep) const
     for (Vector<NotePairs::Entry *>::const_iterator  i = entries.begin(); i != entries.end(); ++i) {
         value.append((*i)->name);
         value.append(": ");
-        value.append(ConfigParser::QuoteString((*i)->value));
+        value.append((*i)->value);
         value.append(sep);
     }
     return value.size() ? value.termedBuf() : NULL;
@@ -186,6 +186,21 @@ void
 NotePairs::add(const char *key, const char *note)
 {
     entries.push_back(new NotePairs::Entry(key, note));
+}
+
+void
+NotePairs::remove(const char *key)
+{
+    Vector<NotePairs::Entry *>::iterator i = entries.begin();
+    while (i != entries.end()) {
+        if ((*i)->name.cmp(key) == 0) {
+            NotePairs::Entry *e = (*i);
+            entries.prune(e);
+            delete e;
+            i = entries.begin(); // vector changed underneath us
+        } else
+            ++i;
+    }
 }
 
 void

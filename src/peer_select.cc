@@ -122,7 +122,7 @@ peerSelectIcpPing(HttpRequest * request, int direct, StoreEntry * entry)
     assert(entry);
     assert(entry->ping_status == PING_NONE);
     assert(direct != DIRECT_YES);
-    debugs(44, 3, "peerSelectIcpPing: " << entry->url()  );
+    debugs(44, 3, "peerSelectIcpPing: " << entry->url());
 
     if (!request->flags.hierarchical && direct != DIRECT_NO)
         return 0;
@@ -242,7 +242,7 @@ peerSelectDnsPaths(ps_state *psstate)
             // construct a "result" adding the ORIGINAL_DST to the set instead of DIRECT
             Comm::ConnectionPointer p = new Comm::Connection();
             p->remote = req->clientConnectionManager->clientConnection->local;
-            p->peerType = fs->code;
+            p->peerType = ORIGINAL_DST; // fs->code is DIRECT. This fixes the display.
             p->setPeer(fs->_peer);
 
             // check for a configured outgoing address for this destination...
@@ -262,7 +262,7 @@ peerSelectDnsPaths(ps_state *psstate)
     if (fs && psstate->paths->size() < (unsigned int)Config.forward_max_tries) {
         // send the next one off for DNS lookup.
         const char *host = fs->_peer ? fs->_peer->host : psstate->request->GetHost();
-        debugs(44, 2, "Find IP destination for: " << psstate->entry->url() << "' via " << host);
+        debugs(44, 2, "Find IP destination for: " << psstate->url() << "' via " << host);
         ipcache_nbgethostbyname(host, peerSelectDnsResults, psstate);
         return;
     }
@@ -271,11 +271,12 @@ peerSelectDnsPaths(ps_state *psstate)
     // due to the allocation method of fs, we must deallocate each manually.
     // TODO: use a std::list so we can get the size and abort adding whenever the selection loops reach Config.forward_max_tries
     if (fs && psstate->paths->size() >= (unsigned int)Config.forward_max_tries) {
+        assert(fs == psstate->servers);
         while (fs) {
-            FwdServer *next = fs->next;
+            psstate->servers = fs->next;
             cbdataReferenceDone(fs->_peer);
             memFree(fs, MEM_FWD_SERVER);
-            fs = next;
+            fs = psstate->servers;
         }
     }
 
@@ -337,14 +338,14 @@ peerSelectDnsResults(const ipcache_addrs *ia, const DnsLookupDetails &details, v
 
             // for TPROXY spoofing we must skip unusable addresses.
             if (psstate->request->flags.spoofClientIp && !(fs->_peer && fs->_peer->options.no_tproxy) ) {
-                if (ia->in_addrs[n].isIPv4() != psstate->request->client_addr.isIPv4()) {
+                if (ia->in_addrs[ip].isIPv4() != psstate->request->client_addr.isIPv4()) {
                     // we CAN'T spoof the address on this link. find another.
                     continue;
                 }
             }
 
             p = new Comm::Connection();
-            p->remote = ia->in_addrs[n];
+            p->remote = ia->in_addrs[ip];
 
             // when IPv6 is disabled we cannot use it
             if (!Ip::EnableIpv6 && p->remote.isIPv6()) {
@@ -743,7 +744,7 @@ peerPingTimeout(void *data)
     StoreEntry *entry = psstate->entry;
 
     if (entry)
-        debugs(44, 3, "peerPingTimeout: '" << entry->url() << "'" );
+        debugs(44, 3, "peerPingTimeout: '" << psstate->url() << "'" );
 
     if (!cbdataReferenceValid(psstate->callback_data)) {
         /* request aborted */
@@ -811,7 +812,7 @@ peerHandleIcpReply(CachePeer * p, peer_t type, icp_common_t * header, void *data
 {
     ps_state *psstate = (ps_state *)data;
     icp_opcode op = header->getOpCode();
-    debugs(44, 3, "peerHandleIcpReply: " << icp_opcode_str[op] << " " << psstate->entry->url()  );
+    debugs(44, 3, "peerHandleIcpReply: " << icp_opcode_str[op] << " " << psstate->url()  );
 #if USE_CACHE_DIGESTS && 0
     /* do cd lookup to count false misses */
 
@@ -844,9 +845,7 @@ static void
 peerHandleHtcpReply(CachePeer * p, peer_t type, HtcpReplyData * htcp, void *data)
 {
     ps_state *psstate = (ps_state *)data;
-    debugs(44, 3, "peerHandleHtcpReply: " <<
-           (htcp->hit ? "HIT" : "MISS") << " " <<
-           psstate->entry->url()  );
+    debugs(44, 3, "" << (htcp->hit ? "HIT" : "MISS") << " " << psstate->url());
     ++ psstate->ping.n_recv;
 
     if (htcp->hit) {

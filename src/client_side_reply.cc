@@ -69,6 +69,8 @@
 #include "esi/Esi.h"
 #endif
 
+#include <memory>
+
 CBDATA_CLASS_INIT(clientReplyContext);
 
 /* Local functions */
@@ -130,13 +132,18 @@ void clientReplyContext::setReplyToError(const HttpRequestMethod& method, ErrorS
 
     http->al->http.code = errstate->httpStatus;
 
+    if (http->request)
+        http->request->ignoreRange("responding with a Squid-generated error");
+
     createStoreEntry(method, RequestFlags());
     assert(errstate->callback_data == NULL);
     errorAppendEntry(http->storeEntry(), errstate);
     /* Now the caller reads to get this */
 }
 
-void clientReplyContext::setReplyToStoreEntry(StoreEntry *entry)
+// Assumes that the entry contains an error response without Content-Range.
+// To use with regular entries, make HTTP Range header removal conditional.
+void clientReplyContext::setReplyToStoreEntry(StoreEntry *entry, const char *reason)
 {
     entry->lock(); // removeClientStoreReference() unlocks
     sc = storeClientListAdd(entry, this);
@@ -145,6 +152,8 @@ void clientReplyContext::setReplyToStoreEntry(StoreEntry *entry)
 #endif
     reqofs = 0;
     reqsize = 0;
+    if (http->request)
+        http->request->ignoreRange(reason);
     flags.storelogiccomplete = 1;
     http->storeEntry(entry);
 }
@@ -691,8 +700,8 @@ clientReplyContext::processOnlyIfCachedMiss()
 {
     debugs(88, 4, "clientProcessOnlyIfCachedMiss: '" <<
            RequestMethodStr(http->request->method) << " " << http->uri << "'");
-    http->al->http.code = Http::scGateway_Timeout;
-    ErrorState *err = clientBuildError(ERR_ONLY_IF_CACHED_MISS, Http::scGateway_Timeout, NULL,
+    http->al->http.code = Http::scGatewayTimeout;
+    ErrorState *err = clientBuildError(ERR_ONLY_IF_CACHED_MISS, Http::scGatewayTimeout, NULL,
                                        http->getConn()->clientConnection->remote, http->request);
     removeClientStoreReference(&sc, http);
     startError(err);
@@ -1314,7 +1323,7 @@ clientReplyContext::buildReplyHeader()
             if (http->storeEntry()->timestamp <= squid_curtime) {
                 // put X-Cache-Age: instead of Age:
                 char age[64];
-                snprintf(age, sizeof(age), "%ld", (long int) squid_curtime - http->storeEntry()->timestamp);
+                snprintf(age, sizeof(age), "%" PRId64, static_cast<int64_t>(squid_curtime - http->storeEntry()->timestamp));
                 hdr->putExt("X-Cache-Age", age);
             }
         } else if (http->storeEntry()->timestamp <= squid_curtime) {
@@ -1392,7 +1401,7 @@ clientReplyContext::buildReplyHeader()
                     if (!request->flags.accelerated && !request->flags.intercepted) {
                         httpHeaderPutStrf(hdr, HDR_PROXY_SUPPORT, "Session-Based-Authentication");
                         /*
-                          We send "[Proxy-]Connection: Proxy-Support" header to mark
+                          We send "Connection: Proxy-Support" header to mark
                           Proxy-Support as a hop-by-hop header for intermediaries that do not
                           understand the semantics of this header. The RFC should have included
                           this recommendation.

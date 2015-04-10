@@ -3051,6 +3051,13 @@ void FtpStateData::readStor()
     debugs(9, 3, HERE);
 
     if (code == 125 || (code == 150 && Comm::IsConnOpen(data.conn))) {
+        if (!originalRequest()->body_pipe) {
+            debugs(9, 3, "zero-size STOR?");
+            state = WRITING_DATA; // make ftpWriteTransferDone() responsible
+            dataComplete(); // XXX: keep in sync with doneSendingRequestBody()
+            return;
+        }
+
         if (!startRequestBodyFlow()) { // register to receive body data
             ftpFail(this);
             return;
@@ -3503,7 +3510,7 @@ FtpStateData::failedErrorMessage(err_type error, int xerrno)
         break;
 
     case ERR_READ_TIMEOUT:
-        ftperr = new ErrorState(error, Http::scGateway_Timeout, fwd->request);
+        ftperr = new ErrorState(error, Http::scGatewayTimeout, fwd->request);
         break;
 
     default:

@@ -718,7 +718,8 @@ FwdState::negotiateSSL(int fd)
             // For intercepted connections, set the host name to the server
             // certificate CN. Otherwise, we just hope that CONNECT is using
             // a user-entered address (a host name or a user-entered IP).
-            const bool isConnectRequest = !request->clientConnectionManager->port->flags.isIntercepted();
+            const bool isConnectRequest = request->clientConnectionManager.valid() &&
+                                          !request->clientConnectionManager->port->flags.isIntercepted();
             if (request->flags.sslPeek && !isConnectRequest) {
                 if (X509 *srvX509 = errDetails->peerCert()) {
                     if (const char *name = Ssl::CommonHostName(srvX509)) {
@@ -964,7 +965,8 @@ FwdState::initiateSSL()
         // unless it was the CONNECT request with a user-typed address.
         const char *hostname = request->GetHost();
         const bool hostnameIsIp = request->GetHostIsNumeric();
-        const bool isConnectRequest = !request->clientConnectionManager->port->flags.isIntercepted();
+        const bool isConnectRequest = request->clientConnectionManager.valid() &&
+                                      !request->clientConnectionManager->port->flags.isIntercepted();
         if (!request->flags.sslPeek || isConnectRequest)
             SSL_set_ex_data(ssl, ssl_ex_index_server, (void*)hostname);
 
@@ -1053,7 +1055,7 @@ FwdState::connectTimeout(int fd)
     assert(fd == serverDestinations[0]->fd);
 
     if (entry->isEmpty()) {
-        ErrorState *anErr = new ErrorState(ERR_CONNECT_FAIL, Http::scGateway_Timeout, request);
+        ErrorState *anErr = new ErrorState(ERR_CONNECT_FAIL, Http::scGatewayTimeout, request);
         anErr->xerrno = ETIMEDOUT;
         fail(anErr);
 
@@ -1384,7 +1386,7 @@ ErrorState *
 FwdState::makeConnectingError(const err_type type) const
 {
     return new ErrorState(type, request->flags.needValidation ?
-                          Http::scGateway_Timeout : Http::scServiceUnavailable, request);
+                          Http::scGatewayTimeout : Http::scServiceUnavailable, request);
 }
 
 static void
@@ -1423,7 +1425,7 @@ FwdState::reforwardableStatus(const Http::StatusCode s) const
 
     case Http::scBadGateway:
 
-    case Http::scGateway_Timeout:
+    case Http::scGatewayTimeout:
         return true;
 
     case Http::scForbidden:

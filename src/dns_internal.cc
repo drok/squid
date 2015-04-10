@@ -37,6 +37,7 @@
 #include "comm.h"
 #include "comm/Loops.h"
 #include "comm/Write.h"
+#include "dlink.h"
 #include "event.h"
 #include "fd.h"
 #include "fde.h"
@@ -1503,6 +1504,12 @@ idnsReadVCHeader(const Comm::ConnectionPointer &conn, char *buf, size_t len, com
     vc->read_msglen = 0;
 
     vc->msglen = ntohs(vc->msglen);
+
+    if (!vc->msglen) {
+        if (Comm::IsConnOpen(conn))
+            conn->close();
+        return;
+    }
 
     vc->msg->init(vc->msglen, vc->msglen);
     AsyncCall::Pointer call = commCbCall(5,4, "idnsReadVC",

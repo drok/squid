@@ -1,4 +1,4 @@
-AC_INIT([Squid Web Proxy],[3.4.1-BZR],[http://bugs.squid-cache.org/],[squid])
+AC_INIT([Squid Web Proxy],[3.4.12-BZR],[http://bugs.squid-cache.org/],[squid])
 AC_PREREQ(2.61)
 AC_CONFIG_HEADERS([include/autoconf.h])
 AC_CONFIG_AUX_DIR(cfgaux)
@@ -16,7 +16,7 @@ m4_include([acinclude/krb5.m4])
 m4_include([acinclude/pam.m4])
 m4_include([acinclude/pkg.m4])
 m4_include([acinclude/lib-checks.m4])
-m4_include([acinclude/ax_cxx_compile_stdcxx_0x.m4])
+m4_include([acinclude/ax_cxx_compile_stdcxx_11.m4])
 m4_include([acinclude/ax_cxx_0x_types.m4])
 
 PRESET_CFLAGS="$CFLAGS"
@@ -82,16 +82,15 @@ if test "x$squid_host_os" = "solaris" -a "x$GCC" != "x" ; then
 	AC_USE_SYSTEM_EXTENSIONS
 fi
 
-# Check for C++0x compiler support
-AX_CXX_COMPILE_STDCXX_0X
-if test "x$ax_cv_cxx_compile_cxx0x_cxx" = "xyes" -a \
-  "x$squid_host_os" != "xmingw" ; then
+# Check for C++11 compiler support
+if test "x$squid_host_os" != "xmingw" ; then
     #BUG 3613: when clang -std=c++0x is used, it activates a "strict mode"
     # in the system libraries, which makes some c99 methods unavailable
     # (e.g. strtoll), yet configure detects them as avilable.
     case "$CXX" in
       *clang++*) ;; #do nothing
-      *) CXXFLAGS="$CXXFLAGS -std=c++0x" ;;
+      *)
+      AX_CXX_COMPILE_STDCXX_11([noext],[optional])
     esac
 fi
 
@@ -431,8 +430,8 @@ AC_RUN_IFELSE([AC_LANG_PROGRAM([[
     AC_MSG_RESULT(yes)
 ],[
     AC_MSG_RESULT(no)
+],[ AC_MSG_RESULT(cross-compiler cant tell)
 ])
-
 
 AC_ARG_ENABLE(debug-cbdata,
   AS_HELP_STRING([--enable-debug-cbdata],
@@ -456,18 +455,6 @@ dnl [  --enable-xmalloc-debug  Do some simple malloc debugging],
 dnl [ if test "$enableval" = "yes" ; then
 dnl     AC_MSG_NOTICE([malloc debugging enabled])
 dnl     AC_DEFINE(XMALLOC_DEBUG,1,[Define to do simple malloc debugging])
-dnl   fi
-dnl ])
-
-dnl This is a developer only option.. developers know how to set defines
-dnl
-dnl AC_ARG_ENABLE(xmalloc-debug-trace,
-dnl [  --enable-xmalloc-debug-trace
-dnl                           Detailed trace of memory allocations],
-dnl [ if test "$enableval" = "yes" ; then
-dnl     AC_MSG_NOTICE([malloc debug trace enabled])
-dnl     AC_DEFINE(XMALLOC_TRACE,1,[Define to have a detailed trace of memory allocations])
-dnl     AC_DEFINE(XMALLOC_DEBUG,1)
 dnl   fi
 dnl ])
 
@@ -606,7 +593,7 @@ for module in $squid_disk_module_candidates none; do
             AC_MSG_NOTICE([Windows threads support automatically enabled])
             ;;
           freebsd)
-            if test `echo "$squid_host_os_version" | cut -b1` -lt 7 ; then
+            if test `echo "$squid_host_os_version" | tr -d .` -lt 70 ; then
                 AC_MSG_NOTICE(pthread library requires FreeBSD 7 or later)
                 squid_opt_use_diskthreads="no"
             else
@@ -1182,7 +1169,7 @@ if test "x${enable_eui:=yes}" = "xyes" ; then
       AC_MSG_WARN([EUI support probably will not work on host $host.])
       ;;
   esac
-  #Iphlpapi.h check delayed after winsock2.h
+  # iphlpapi.h check delayed after winsock2.h
   AC_CHECK_HEADERS( \
     windows.h \
     sys/sockio.h \
@@ -1228,6 +1215,30 @@ SQUID_DEFINE_BOOL(USE_HTCP,${enable_htcp:=yes},
 AM_CONDITIONAL(ENABLE_HTCP, [test "x$enable_htcp" = "xyes"])
 AC_MSG_NOTICE([HTCP support enabled: $enable_htcp])
 
+# Cryptograhic libraries
+AC_ARG_WITH(nettle,
+  AS_HELP_STRING([--without-nettle],[Compile without the Nettle crypto library.]),[
+case "$with_nettle" in
+  yes|no)
+    : # Nothing special to do here
+    ;;
+  *)
+    if test ! -d "$withval" ; then
+      AC_MSG_ERROR([--with-nettle path does not point to a directory])
+    fi
+    NETTLELIBDIR="-L$with_nettle/lib"
+    CPPFLAGS="-I$with_nettle/include $CPPFLAGS"
+    with_nettle=yes
+  esac
+])
+if test "x$with_nettle" != "xno" ; then
+  AC_CHECK_LIB(nettle, nettle_md5_init,[
+    NETTLELIB="$NETTLELIBDIR -lnettle"
+    AC_CHECK_HEADERS(nettle/md5.h)
+  ],[with_nettle=no])
+fi
+AC_MSG_NOTICE([Using Nettle cryptographic library: ${with_nettle:=yes}])
+AC_SUBST(NETTLELIB)
 
 # SSL is not enabled by default.
 # Default is to use OpenSSL when available
@@ -1277,11 +1288,9 @@ case "$with_openssl" in
 ])
 SQUID_DEFINE_BOOL(USE_SSL,$enable_ssl,
    [Define this to include code for SSL gatewaying support])
-AC_MSG_NOTICE([Using OpenSSL MD5 implementation: ${with_openssl:=no}])
-SQUID_DEFINE_BOOL(USE_OPENSSL,${with_openssl},
-   [Define this to make use of the OpenSSL libraries for MD5 calculation rather than Squid-supplied MD5 implementation or if building with SSL encryption])
+AC_MSG_NOTICE([Using OpenSSL library: ${with_openssl:=no}])
 if test "x$enable_ssl" = "xyes"; then
-  if test "x$SSLLIB" = "x"; then
+  if test "x$SSLLIB" = "x" -a "x$with_nettle" = "xno"; then
     SSLLIB="-lcrypto" # for MD5 routines
   fi
   # This is a workaround for RedHat 9 brain damage..
@@ -1876,7 +1885,7 @@ if test "x$ac_krb5_config" = "xyes" ; then
   CPPFLAGS="$CPPFLAGS $KRB5INCS"
   LIBS="$LIBS $KRB5LIBS"
   AC_CHECK_HEADERS(gssapi.h gssapi/gssapi.h gssapi/gssapi_krb5.h)
-  if test "x$ac_heimdal" == "x" ; then
+  if test "x$ac_heimdal" = "x" ; then
     AC_CHECK_HEADERS(gssapi/gssapi_generic.h)
     AC_CHECK_HEADERS(profile.h)
   fi
@@ -1896,9 +1905,9 @@ if test "x$ac_krb5_config" = "xyes" ; then
   AC_CHECK_HEADERS(krb5.h com_err.h et/com_err.h)
 
   ac_com_error_message=no
-  if test "x$ac_cv_header_com_err_h" == "xyes" ; then
+  if test "x$ac_cv_header_com_err_h" = "xyes" ; then
       AC_EGREP_HEADER(error_message,com_err.h,ac_com_error_message=yes)
-  elif test "x$ac_cv_header_et_com_err_h" == "xyes" ; then
+  elif test "x$ac_cv_header_et_com_err_h" = "xyes" ; then
       AC_EGREP_HEADER(error_message,et/com_err.h,ac_com_error_message=yes)
   fi
 
@@ -1907,11 +1916,11 @@ if test "x$ac_krb5_config" = "xyes" ; then
     AC_DEFINE(HAVE_MAX_SKEW_IN_KRB5_CONTEXT, 1, [Define to 1 if max_skew in struct krb5_context])
   fi
 
-  if test `echo $KRB5LIBS | grep -c com_err` -ne 0 -a "x$ac_com_error_message" == "xyes" ; then
+  if test `echo $KRB5LIBS | grep -c com_err` -ne 0 -a "x$ac_com_error_message" = "xyes" ; then
     AC_CHECK_LIB(com_err,error_message,
       AC_DEFINE(HAVE_ERROR_MESSAGE,1,
         [Define to 1 if you have error_message]),)
-  elif test  "x$ac_com_error_message" == "xyes" ; then
+  elif test  "x$ac_com_error_message" = "xyes" ; then
     AC_CHECK_LIB(krb5,error_message,
       AC_DEFINE(HAVE_ERROR_MESSAGE,1,
         [Define to 1 if you have error_message]),)
@@ -2212,6 +2221,7 @@ AC_CHECK_HEADERS( \
   cassert \
   crypt.h \
   cstdarg \
+  cstdio \
   cstdlib \
   cstring \
   list \
@@ -2229,10 +2239,6 @@ AC_CHECK_HEADERS( \
   iostream \
   fstream \
   climits \
-  ip_compat.h \
-  ip_fil_compat.h \
-  ip_fil.h \
-  ip_nat.h \
   ipl.h \
   lber.h \
   ldap.h \
@@ -2241,7 +2247,6 @@ AC_CHECK_HEADERS( \
   limits.h \
   linux/posix_types.h \
   linux/types.h \
-  machine/byte_swap.h \
   malloc.h \
   map \
   math.h \
@@ -2251,7 +2256,6 @@ AC_CHECK_HEADERS( \
   netdb.h \
   netinet/in.h \
   netinet/in_systm.h \
-  netinet/ip_fil_compat.h \
   openssl/err.h \
   openssl/md5.h \
   openssl/opensslv.h \
@@ -2280,8 +2284,6 @@ AC_CHECK_HEADERS( \
   string.h \
   strings.h \
   sys/bitypes.h \
-  sys/bswap.h \
-  sys/endian.h \
   sys/file.h \
   sys/ioctl.h \
   sys/ipc.cc \
@@ -2341,12 +2343,8 @@ AC_CHECK_HEADERS( \
   netinet/in.h \
   netinet/ip.h \
   netinet/ip6.h \
-  netinet/ip_compat.h\
-  netinet/ip_fil_compat.h\
-  netinet/ip_fil.h\
   netinet/ip_icmp.h \
   netinet/ipl.h \
-  netinet/ip_nat.h\
   net/pf/pfvar.h \
   net/pfvar.h \
   sys/mount.h\
@@ -2528,7 +2526,7 @@ if test "x$squid_host_os" = "xmingw" ; then
   AC_CHECK_HEADERS( \
     windows.h \
     ws2tcpip.h \
-    Iphlpapi.h ,,,[
+    iphlpapi.h ,,,[
 #if HAVE_WINDOWS_H
 #include <windows.h>
 #endif
@@ -2929,6 +2927,7 @@ case "$host" in
       CFLAGS="`echo $CFLAGS | sed -e 's/-O[[0-9]]*//'`"
     fi
   ;;
+
   *-sgi-irix*)
     AC_MSG_NOTICE([Removing -lsocket for IRIX...])
     LIBS=`echo $LIBS | sed -e s/-lsocket//`
@@ -2991,7 +2990,7 @@ assert(myBar != NULL);
 # Remove optimization for GCC 2.95.[123]
 # gcc -O[2] on *BSD and Linux (x86) causes pointers to magically become NULL
 if test "x$GCC" = "xyes"; then
-	GCCVER=`$CC -v 2>&1 | awk '$2 ==  "version" {print $3}'`
+	GCCVER=`$CC -v 2>&1 | awk '$2 == "version" {print $3}'`
 	case "$GCCVER" in
 	[2.95.[123]])
 		AC_MSG_NOTICE([Removing -O for gcc on $host with GCC $GCCVER])
@@ -3053,10 +3052,6 @@ dnl Check for library functions
 AC_CHECK_FUNCS(\
 	backtrace_symbols_fd \
 	bcopy \
-	bswap_16 \
-	bswap_32 \
-	bswap16 \
-	bswap32 \
 	eui64_aton \
 	fchmod \
 	getdtablesize \
@@ -3067,8 +3062,6 @@ AC_CHECK_FUNCS(\
 	getspnam \
 	gettimeofday \
 	glob \
-	htobe16 \
-	htole16 \
 	lrand48 \
 	mallinfo \
 	mallocblksize \
@@ -3093,7 +3086,6 @@ AC_CHECK_FUNCS(\
 	res_init \
 	__res_init \
 	rint \
-	sbrk \
 	sched_getaffinity \
 	sched_setaffinity \
 	select \
@@ -3122,7 +3114,6 @@ AC_REPLACE_FUNCS(\
 	getnameinfo \
 	psignal \
 	strerror \
-	strsep \
 	strtoll \
 	tempnam \
 )
@@ -3192,14 +3183,56 @@ AC_COMPILE_IFELSE([AC_LANG_SOURCE([[
   AC_MSG_RESULT(no)
 ])
 
+AC_CHECK_TYPE(struct cmsghdr,AC_DEFINE(HAVE_CMSGHDR,1,[The system provides struct cmsghdr]),,[
+  #if HAVE_SYS_SOCKET_H
+  #include <sys/socket.h>
+  #endif
+  #if HAVE_WINSOCK2_H
+  #include <winsock2.h>
+  #endif
+])
+
+AC_CHECK_TYPE(struct iovec,AC_DEFINE(HAVE_IOVEC,1,[The system provides struct iovec]),,[
+  #if HAVE_SYS_SOCKET_H
+  #include <sys/socket.h>
+  #endif
+  #if HAVE_WINSOCK2_H
+  #include <winsock2.h>
+  #endif
+  #if HAVE_SYS_UIO_H
+  #include <sys/uio.h>
+  #endif
+])
+
+AC_CHECK_TYPE(struct msghdr,AC_DEFINE(HAVE_MSGHDR,1,[The system provides struct msghdr]),,[
+  #if HAVE_SYS_SOCKET_H
+  #include <sys/socket.h>
+  #endif
+  #if HAVE_WINSOCK2_H
+  #include <winsock2.h>
+  #endif
+])
+
+AC_CHECK_TYPE(struct sockaddr_un,AC_DEFINE(HAVE_SOCKADDR_UN,1,[The system provides sockaddr_un]),,[
+  #if HAVE_SYS_UN_H
+  #include <sys/un.h>
+  #endif
+  #if HAVE_SYS_SOCKET_H
+  #include <sys/socket.h>
+  #endif
+  #if HAVE_WINSOCK2_H
+  #include <winsock2.h>
+  #endif
+])
+
 SQUID_CHECK_FUNC_STRNSTR
 SQUID_CHECK_FUNC_VACOPY
 SQUID_CHECK_FUNC___VACOPY
 
-  
 dnl IP-Filter support requires ipf header files. These aren't
 dnl installed by default, so we need to check for them
 if test "x$enable_ipf_transparent" != "xno" ; then
+    SQUID_CHECK_BROKEN_SOLARIS_IPFILTER
     AC_MSG_CHECKING(for availability of IP-Filter header files)
     # hold on to your hats...
     if test "x$ac_cv_header_ip_compat_h" = "xyes" -o \
@@ -3207,8 +3240,8 @@ if test "x$enable_ipf_transparent" != "xno" ; then
         "x$ac_cv_header_netinet_ip_compat_h" = "xyes" -o \
         "x$ac_cv_header_netinet_ip_fil_compat_h" = "xyes" ; then
         have_ipfilter_compat_header="yes"
-     fi
-     if test "x$have_ipfilter_compat_header" = "xyes" -a \
+    fi
+    if test "x$have_ipfilter_compat_header" = "xyes" -a \
        "x$ac_cv_header_ip_fil_h" = "xyes" -a \
        "x$ac_cv_header_ip_nat_h" = "xyes" ; then
         enable_ipf_transparent="yes"
@@ -3220,18 +3253,19 @@ if test "x$enable_ipf_transparent" != "xno" ; then
         enable_ipf_transparent="no"
     fi
     AC_MSG_RESULT($IPF_TRANSPARENT)
+
+## On Solaris Ipfilter includes expect that SOLARIS2 is defined with the
+## Solaris minor version (8, 9, 10, ...)
+  if test "x$enable_ipf_transparent" = "xyes" -a "x$squid_host_os" = "xsolaris" ; then
+    solrev=`uname -r | sh -c 'IFS=. read j n x; echo $n'`
+    CFLAGS="-DSOLARIS2=$solrev $CFLAGS"
+    CXXFLAGS="-DSOLARIS2=$solrev $CXXFLAGS"
+  fi
+
 fi
 AC_MSG_NOTICE([IPF-based transparent proxying enabled: $enable_ipf_transparent])
 SQUID_DEFINE_BOOL(IPF_TRANSPARENT,$enable_ipf_transparent,
     [Enable support for IPF-style transparent proxying])
-
-if test "x$enable_ipf_transparent" = "xyes" -a "x$squid_host_os" = "xsolaris" ; then
-dnl On Solaris Ipfilter includes expect that SOLARIS2 is defined with the
-dnl Solaris minor version (8, 9, 10, ...)
-  solrev=`uname -r | sh -c 'IFS=. read j n x; echo $n'`
-  CFLAGS="-DSOLARIS2=$solrev $CFLAGS" 
-  CXXFLAGS="-DSOLARIS2=$solrev $CXXFLAGS" 
-fi
 
 dnl PF /dev/pf support requires a header file.
 if test "x$with_nat_devpf" != "xno" ; then
@@ -3367,15 +3401,14 @@ if test "x$ac_cv_header_sys_statvfs_h" = "xyes" ; then
 fi
 
 
-dnl Squid will usually attempt to translate when packaging or building from VCS 
+dnl Squid will not usually attempt to translate templates when building
 AC_ARG_ENABLE(translation,
- AS_HELP_STRING([--disable-translation],[Prevent Squid generating localized error page templates and manuals.
-		 Which is usually tried, but may not be needed.]), [ 
-SQUID_YESNO([$enableval],
-     [unrecognized argument to --disable-translation: $enableval])
+ AS_HELP_STRING([--enable-translation],[Generate the localized error page templates and manuals.
+		 Which can also be downloaded from http://www.squid-cache.org/Versions/langpack/.]), [ 
+  SQUID_YESNO([$enableval],
+     [unrecognized argument to --enable-translation: $enableval])
 ])
-dnl Squid now has .po translation capability, given the right toolkit
-if test "x${enable_translation:=yes}" = "xyes" ; then
+if test "x${enable_translation:=no}" = "xyes" ; then
   AX_WITH_PROG([PO2HTML],[po2html])
   AX_WITH_PROG([PO2TEXT],[po2txt])
 else

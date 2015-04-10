@@ -50,6 +50,13 @@
 #include "HttpRequest.h"
 #include "Mem.h"
 
+#include <set>
+#include <algorithm>
+
+typedef std::set<ACL*> AclSet;
+/// Accumulates all ACLs to facilitate their clean deletion despite reuse.
+static AclSet *RegisteredAcls; // TODO: Remove when ACLs are refcounted
+
 /* does name lookup, returns page_id */
 err_type
 aclGetDenyInfoPage(AclDenyInfoList ** head, const char *name, int redirect_allowed)
@@ -244,23 +251,50 @@ aclParseAclList(ConfigParser &, Acl::Tree **treep, const char *label)
     *treep = tree;
 }
 
+void
+aclRegister(ACL *acl)
+{
+    if (!acl->registered) {
+        if (!RegisteredAcls)
+            RegisteredAcls = new AclSet;
+        RegisteredAcls->insert(acl);
+        acl->registered = true;
+    }
+}
+
+/// remove registered acl from the centralized deletion set
+static
+void
+aclDeregister(ACL *acl)
+{
+    if (acl->registered) {
+        if (RegisteredAcls)
+            RegisteredAcls->erase(acl);
+        acl->registered = false;
+    }
+}
+
 /*********************/
 /* Destroy functions */
 /*********************/
 
+/// called to delete ALL Acls.
 void
 aclDestroyAcls(ACL ** head)
 {
-    ACL *next = NULL;
-
-    debugs(28, 8, "aclDestroyACLs: invoked");
-
-    for (ACL *a = *head; a; a = next) {
-        next = a->next;
-        delete a;
+    *head = NULL; // Config.aclList
+    if (AclSet *acls = RegisteredAcls) {
+        debugs(28, 8, "deleting all " << acls->size() << " ACLs");
+        while (!acls->empty()) {
+            ACL *acl = *acls->begin();
+            // We use centralized deletion (this function) so ~ACL should not
+            // delete other ACLs, but we still deregister first to prevent any
+            // accesses to the being-deleted ACL via RegisteredAcls.
+            assert(acl->registered); // make sure we are making progress
+            aclDeregister(acl);
+            delete acl;
+        }
     }
-
-    *head = NULL;
 }
 
 void
@@ -268,7 +302,8 @@ aclDestroyAclList(ACLList **list)
 {
     debugs(28, 8, "aclDestroyAclList: invoked");
     assert(list);
-    cbdataFree(*list);
+    delete *list;
+    *list = NULL;
 }
 
 void
@@ -277,7 +312,8 @@ aclDestroyAccessList(acl_access ** list)
     assert(list);
     if (*list)
         debugs(28, 3, "destroying: " << *list << ' ' << (*list)->name);
-    cbdataFree(*list);
+    delete *list;
+    *list = NULL;
 }
 
 /* maex@space.net (06.09.1996)

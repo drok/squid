@@ -38,7 +38,6 @@
 #include "comm.h"
 #include "comm/Connection.h"
 #include "comm/Loops.h"
-#include "compat/strsep.h"
 #include "event.h"
 #include "ip/Address.h"
 #include "md5.h"
@@ -67,7 +66,7 @@ static EVH wccp2AssignBuckets;
 #define WCCP2_MASK_ASSIGNMENT		0x01
 
 #define	WCCP2_NONE_SECURITY_LEN	0
-#define	WCCP2_MD5_SECURITY_LEN	16
+#define	WCCP2_MD5_SECURITY_LEN	SQUID_MD5_DIGEST_LENGTH // 16
 
 /* Useful defines */
 #define	WCCP2_NUMPORTS	8
@@ -573,7 +572,7 @@ wccp2_get_service_by_id(int service, int service_id) {
 static char
 wccp2_update_md5_security(char *password, char *ptr, char *packet, int len)
 {
-    uint8_t md5_digest[16];
+    uint8_t md5Digest[SQUID_MD5_DIGEST_LENGTH];
     char pwd[WCCP2_PASSWORD_LEN];
     SquidMD5_CTX M;
 
@@ -601,7 +600,7 @@ wccp2_update_md5_security(char *password, char *ptr, char *packet, int len)
      * including the WCCP message header. The WCCP security implementation
      * area should be zero'ed before calculating the MD5 hash.
      */
-    /* XXX eventually we should be able to kill md5_digest and blit it directly in */
+    /* XXX eventually we should be able to kill md5Digest and blit it directly in */
     memset(ws->security_implementation, 0, sizeof(ws->security_implementation));
 
     SquidMD5Init(&M);
@@ -610,9 +609,9 @@ wccp2_update_md5_security(char *password, char *ptr, char *packet, int len)
 
     SquidMD5Update(&M, packet, len);
 
-    SquidMD5Final(md5_digest, &M);
+    SquidMD5Final(md5Digest, &M);
 
-    memcpy(ws->security_implementation, md5_digest, sizeof(md5_digest));
+    memcpy(ws->security_implementation, md5Digest, sizeof(md5Digest));
 
     /* Finished! */
     return 1;
@@ -627,7 +626,7 @@ wccp2_check_security(struct wccp2_service_list_t *srv, char *security, char *pac
 {
 
     struct wccp2_security_md5_t *ws = (struct wccp2_security_md5_t *) security;
-    uint8_t md5_digest[16], md5_challenge[16];
+    uint8_t md5Digest[SQUID_MD5_DIGEST_LENGTH], md5_challenge[SQUID_MD5_DIGEST_LENGTH];
     char pwd[WCCP2_PASSWORD_LEN];
     SquidMD5_CTX M;
 
@@ -655,7 +654,7 @@ wccp2_check_security(struct wccp2_service_list_t *srv, char *security, char *pac
     pwd[sizeof(pwd) - 1] = '\0';
 
     /* Take a copy of the challenge: we need to NUL it before comparing */
-    memcpy(md5_challenge, ws->security_implementation, 16);
+    memcpy(md5_challenge, ws->security_implementation, sizeof(md5_challenge));
 
     memset(ws->security_implementation, 0, sizeof(ws->security_implementation));
 
@@ -665,9 +664,9 @@ wccp2_check_security(struct wccp2_service_list_t *srv, char *security, char *pac
 
     SquidMD5Update(&M, packet, len);
 
-    SquidMD5Final(md5_digest, &M);
+    SquidMD5Final(md5Digest, &M);
 
-    return (memcmp(md5_digest, md5_challenge, 16) == 0);
+    return (memcmp(md5Digest, md5_challenge, SQUID_MD5_DIGEST_LENGTH) == 0);
 }
 
 void
@@ -1072,13 +1071,18 @@ wccp2ConnectionClose(void)
         return;
     }
 
+    /* TODO A shutting-down cache should generate a removal query, informing the router
+     * (and therefore the caches in the group) that this cache is going
+     * away and no new traffic should be forwarded to it.
+     */
+
     if (theWccp2Connection > -1) {
         debugs(80, DBG_IMPORTANT, "FD " << theWccp2Connection << " Closing WCCPv2 socket");
         comm_close(theWccp2Connection);
         theWccp2Connection = -1;
     }
 
-    /* for each router on each service send a packet */
+    /* free all stored router state */
     service_list_ptr = wccp2_service_list_head;
 
     while (service_list_ptr != NULL) {
@@ -1172,14 +1176,13 @@ wccp2HandleUdp(int sock, void *not_used)
 
     /* FIXME INET6 : drop conversion boundary */
     Ip::Address from_tmp;
+    from_tmp.setIPv4();
 
     len = comm_udp_recvfrom(sock,
                             &wccp2_i_see_you,
                             WCCP_RESPONSE_SIZE,
                             0,
                             from_tmp);
-    /* FIXME INET6 : drop conversion boundary */
-    from_tmp.getSockAddr(from);
 
     if (len < 0)
         return;
@@ -1189,6 +1192,9 @@ wccp2HandleUdp(int sock, void *not_used)
 
     if (ntohl(wccp2_i_see_you.type) != WCCP2_I_SEE_YOU)
         return;
+
+    /* FIXME INET6 : drop conversion boundary */
+    from_tmp.getSockAddr(from);
 
     debugs(80, 3, "Incoming WCCPv2 I_SEE_YOU length " << ntohs(wccp2_i_see_you.length) << ".");
 
@@ -2204,82 +2210,72 @@ check_null_wccp2_service(void *v)
 static int
 parse_wccp2_service_flags(char *flags)
 {
-    char *tmp, *tmp2;
-    char *flag;
+    if (!flags)
+        return 0;
+
+    char *flag = flags;
     int retflag = 0;
 
-    if (!flags) {
-        return 0;
-    }
+    while (size_t len = strcspn(flag, ",")) {
 
-    tmp = xstrdup(flags);
-    tmp2 = tmp;
-
-    flag = strsep(&tmp2, ",");
-
-    while (flag) {
-        if (strcmp(flag, "src_ip_hash") == 0) {
+        if (strncmp(flag, "src_ip_hash", len) == 0) {
             retflag |= WCCP2_SERVICE_SRC_IP_HASH;
-        } else if (strcmp(flag, "dst_ip_hash") == 0) {
+        } else if (strncmp(flag, "dst_ip_hash", len) == 0) {
             retflag |= WCCP2_SERVICE_DST_IP_HASH;
-        } else if (strcmp(flag, "source_port_hash") == 0) {
+        } else if (strncmp(flag, "source_port_hash", len) == 0) {
             retflag |= WCCP2_SERVICE_SRC_PORT_HASH;
-        } else if (strcmp(flag, "dst_port_hash") == 0) {
+        } else if (strncmp(flag, "dst_port_hash", len) == 0) {
             retflag |= WCCP2_SERVICE_DST_PORT_HASH;
-        } else if (strcmp(flag, "ports_source") == 0) {
+        } else if (strncmp(flag, "ports_source", len) == 0) {
             retflag |= WCCP2_SERVICE_PORTS_SOURCE;
-        } else if (strcmp(flag, "src_ip_alt_hash") == 0) {
+        } else if (strncmp(flag, "src_ip_alt_hash", len) == 0) {
             retflag |= WCCP2_SERVICE_SRC_IP_ALT_HASH;
-        } else if (strcmp(flag, "dst_ip_alt_hash") == 0) {
+        } else if (strncmp(flag, "dst_ip_alt_hash", len) == 0) {
             retflag |= WCCP2_SERVICE_DST_IP_ALT_HASH;
-        } else if (strcmp(flag, "src_port_alt_hash") == 0) {
+        } else if (strncmp(flag, "src_port_alt_hash", len) == 0) {
             retflag |= WCCP2_SERVICE_SRC_PORT_ALT_HASH;
-        } else if (strcmp(flag, "dst_port_alt_hash") == 0) {
+        } else if (strncmp(flag, "dst_port_alt_hash", len) == 0) {
             retflag |= WCCP2_SERVICE_DST_PORT_ALT_HASH;
         } else {
+            flag[len] = '\0';
             fatalf("Unknown wccp2 service flag: %s\n", flag);
         }
 
-        flag = strsep(&tmp2, ",");
+        if (flag[len] == '\0')
+            break;
+
+        flag += len+1;
     }
 
-    xfree(tmp);
     return retflag;
 }
 
 static void
 parse_wccp2_service_ports(char *options, int portlist[])
 {
-    int i = 0;
-    int p;
-    char *tmp, *tmp2, *port;
-
     if (!options) {
         return;
     }
 
-    tmp = xstrdup(options);
-    tmp2 = tmp;
+    int i = 0;
+    char *tmp = options;
 
-    port = strsep(&tmp2, ",");
-
-    while (port && i < WCCP2_NUMPORTS) {
-        p = xatoi(port);
+    while (size_t len = strcspn(tmp, ",")) {
+        if (i >= WCCP2_NUMPORTS) {
+            fatalf("parse_wccp2_service_ports: too many ports (maximum: 8) in list '%s'\n", options);
+        }
+        int p = xatoi(tmp);
 
         if (p < 1 || p > 65535) {
-            fatalf("parse_wccp2_service_ports: port value '%s' isn't valid (1..65535)\n", port);
+            fatalf("parse_wccp2_service_ports: port value '%s' isn't valid (1..65535)\n", tmp);
         }
 
         portlist[i] = p;
         ++i;
-        port = strsep(&tmp2, ",");
+        if (tmp[len] == '\0')
+            return;
+        tmp += len+1;
     }
-
-    if (i == WCCP2_NUMPORTS && port) {
-        fatalf("parse_wccp2_service_ports: too many ports (maximum: 8) in list '%s'\n", options);
-    }
-
-    xfree(tmp);
 }
 
 void

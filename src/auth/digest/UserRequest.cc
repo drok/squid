@@ -152,10 +152,14 @@ Auth::Digest::UserRequest::authenticate(HttpRequest * request, ConnStateData * c
     }
 
     /* check for stale nonce */
-    if (!authDigestNonceIsValid(digest_request->nonce, digest_request->nc)) {
-        debugs(29, 3, "user '" << auth_user->username() << "' validated OK but nonce stale");
-        auth_user->credentials(Auth::Failed);
-        digest_request->setDenyMessage("Stale nonce");
+    /* check Auth::Pending to avoid loop */
+
+    if (!authDigestNonceIsValid(digest_request->nonce, digest_request->nc) && user()->credentials() != Auth::Pending) {
+        debugs(29, 3, auth_user->username() << "' validated OK but nonce stale: " << digest_request->nonceb64);
+        /* Pending prevent banner and makes a ldap control */
+        auth_user->credentials(Auth::Pending);
+        nonce->flags.valid = false;
+        authDigestNoncePurge(nonce);
         return;
     }
 
@@ -181,6 +185,7 @@ Auth::Digest::UserRequest::module_direction()
     case Auth::Ok:
         return Auth::CRED_VALID;
 
+    case Auth::Handshake:
     case Auth::Failed:
         /* send new challenge */
         return Auth::CRED_CHALLENGE;
@@ -214,8 +219,14 @@ Auth::Digest::UserRequest::addAuthenticationInfoHeader(HttpReply * rep, int acce
 
     if ((static_cast<Auth::Digest::Config*>(Auth::Config::Find("digest"))->authenticateProgram) && authDigestNonceLastRequest(nonce)) {
         flags.authinfo_sent = true;
-        debugs(29, 9, HERE << "Sending type:" << type << " header: 'nextnonce=\"" << authenticateDigestNonceNonceb64(nonce) << "\"");
-        httpHeaderPutStrf(&rep->header, type, "nextnonce=\"%s\"", authenticateDigestNonceNonceb64(nonce));
+        Auth::Digest::User *digest_user = dynamic_cast<Auth::Digest::User *>(user().getRaw());
+        digest_nonce_h *nextnonce = digest_user->currentNonce();
+        if (!nextnonce || authDigestNonceLastRequest(nonce)) {
+            nextnonce = authenticateDigestNonceNew();
+            authDigestUserLinkNonce(digest_user, nextnonce);
+        }
+        debugs(29, 9, "Sending type:" << type << " header: 'nextnonce=\"" << authenticateDigestNonceNonceb64(nextnonce) << "\"");
+        httpHeaderPutStrf(&rep->header, type, "nextnonce=\"%s\"", authenticateDigestNonceNonceb64(nextnonce));
     }
 }
 
@@ -240,7 +251,13 @@ Auth::Digest::UserRequest::addAuthenticationInfoTrailer(HttpReply * rep, int acc
     type = accel ? HDR_AUTHENTICATION_INFO : HDR_PROXY_AUTHENTICATION_INFO;
 
     if ((static_cast<Auth::Digest::Config*>(digestScheme::GetInstance()->getConfig())->authenticate) && authDigestNonceLastRequest(nonce)) {
-        debugs(29, 9, HERE << "Sending type:" << type << " header: 'nextnonce=\"" << authenticateDigestNonceNonceb64(nonce) << "\"");
+        Auth::Digest::User *digest_user = dynamic_cast<Auth::Digest::User *>(auth_user_request->user().getRaw());
+        nonce = digest_user->currentNonce();
+        if (!nonce) {
+            nonce = authenticateDigestNonceNew();
+            authDigestUserLinkNonce(digest_user, nonce);
+        }
+        debugs(29, 9, "Sending type:" << type << " header: 'nextnonce=\"" << authenticateDigestNonceNonceb64(nonce) << "\"");
         httpTrailerPutStrf(&rep->header, type, "nextnonce=\"%s\"", authenticateDigestNonceNonceb64(nonce));
     }
 }
@@ -285,6 +302,8 @@ Auth::Digest::UserRequest::HandleReply(void *data, const HelperReply &reply)
     // add new helper kv-pair notes to the credentials object
     // so that any transaction using those credentials can access them
     auth_user_request->user()->notes.appendNewOnly(&reply.notes);
+    // remove any private credentials detail which got added.
+    auth_user_request->user()->notes.remove("ha1");
 
     static bool oldHelperWarningDone = false;
     switch (reply.result) {

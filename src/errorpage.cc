@@ -736,7 +736,7 @@ ErrorState::Dump(MemBuf * mb)
         str.Printf("Err: [none]\r\n");
     }
 #if USE_AUTH
-    if (auth_user_request->denyMessage())
+    if (auth_user_request.getRaw() && auth_user_request->denyMessage())
         str.Printf("Auth ErrMsg: %s\r\n", auth_user_request->denyMessage());
 #endif
     if (dnsError.size() > 0)
@@ -1157,7 +1157,7 @@ ErrorState::BuildHttpReply()
 
     if (name[0] == '3' || (name[0] != '2' && name[0] != '4' && name[0] != '5' && strchr(name, ':'))) {
         /* Redirection */
-        Http::StatusCode status = Http::scMovedTemporarily;
+        Http::StatusCode status = Http::scFound;
         // Use configured 3xx reply status if set.
         if (name[0] == '3')
             status = httpStatus;
@@ -1303,6 +1303,8 @@ MemBuf *ErrorState::ConvertText(const char *text, bool allowRecursion)
 
     if (*m)
         content->Printf("%s", m);	/* copy tail */
+
+    content->terminate();
 
     assert((size_t)content->contentSize() == strlen(content->content()));
 

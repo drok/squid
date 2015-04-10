@@ -122,6 +122,12 @@ Comm::TcpAcceptor::swanSong()
 {
     debugs(5,5, HERE);
     unsubscribe("swanSong");
+    if (IsConnOpen(conn)) {
+        if (closer_ != NULL)
+            comm_remove_close_handler(conn->fd, closer_);
+        conn->close();
+    }
+
     conn = NULL;
     AcceptLimiter::Instance().removeDead(this);
     AsyncJob::swanSong();
@@ -182,6 +188,20 @@ Comm::TcpAcceptor::setListen()
         debugs(5, DBG_CRITICAL, "WARNING: accept_filter not supported on your OS");
 #endif
     }
+
+    typedef CommCbMemFunT<Comm::TcpAcceptor, CommCloseCbParams> Dialer;
+    closer_ = JobCallback(5, 4, Dialer, this, Comm::TcpAcceptor::handleClosure);
+    comm_add_close_handler(conn->fd, closer_);
+}
+
+/// called when listening descriptor is closed by an external force
+/// such as clientHttpConnectionsClose()
+void
+Comm::TcpAcceptor::handleClosure(const CommCloseCbParams &io)
+{
+    closer_ = NULL;
+    conn = NULL;
+    Must(done());
 }
 
 /**
@@ -388,10 +408,10 @@ Comm::TcpAcceptor::oldAccept(Comm::ConnectionPointer &details)
 
 #if USE_SQUID_EUI
     if (Eui::TheConfig.euiLookup) {
-        if (conn->remote.isIPv4()) {
-            conn->remoteEui48.lookup(conn->remote);
-        } else if (conn->remote.isIPv6()) {
-            conn->remoteEui64.lookup(conn->remote);
+        if (details->remote.isIPv4()) {
+            details->remoteEui48.lookup(details->remote);
+        } else if (details->remote.isIPv6()) {
+            details->remoteEui64.lookup(details->remote);
         }
     }
 #endif

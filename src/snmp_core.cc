@@ -59,7 +59,7 @@ static mib_tree_entry * snmpAddNodeStr(const char *base_str, int o, oid_ParseFn 
 static mib_tree_entry *snmpAddNode(oid * name, int len, oid_ParseFn * parsefunction, instance_Fn * instancefunction, AggrType aggrType, int children,...);
 static oid *snmpCreateOid(int length,...);
 mib_tree_entry * snmpLookupNodeStr(mib_tree_entry *entry, const char *str);
-int snmpCreateOidFromStr(const char *str, oid **name, int *nl);
+bool snmpCreateOidFromStr(const char *str, oid **name, int *nl);
 SQUIDCEXTERN void (*snmplib_debug_hook) (int, char *);
 static oid *static_Inst(oid * name, snint * len, mib_tree_entry * current, oid_ParseFn ** Fn);
 static oid *time_Inst(oid * name, snint * len, mib_tree_entry * current, oid_ParseFn ** Fn);
@@ -362,7 +362,7 @@ snmpClosePorts(void)
 void
 snmpHandleUdp(int sock, void *not_used)
 {
-    LOCAL_ARRAY(char, buf, SNMP_REQUEST_SIZE);
+    static char buf[SNMP_REQUEST_SIZE];
     Ip::Address from;
     SnmpRequest *snmp_rq;
     int len;
@@ -371,16 +371,11 @@ snmpHandleUdp(int sock, void *not_used)
 
     Comm::SetSelect(sock, COMM_SELECT_READ, snmpHandleUdp, NULL, 0);
 
-    memset(buf, '\0', SNMP_REQUEST_SIZE);
+    memset(buf, '\0', sizeof(buf));
 
-    len = comm_udp_recvfrom(sock,
-                            buf,
-                            SNMP_REQUEST_SIZE,
-                            0,
-                            from);
+    len = comm_udp_recvfrom(sock, buf, sizeof(buf)-1, 0, from);
 
     if (len > 0) {
-        buf[len] = '\0';
         debugs(49, 3, "snmpHandleUdp: FD " << sock << ": received " << len << " bytes from " << from << ".");
 
         snmp_rq = (SnmpRequest *)xcalloc(1, sizeof(SnmpRequest));
@@ -951,26 +946,29 @@ snmpLookupNodeStr(mib_tree_entry *root, const char *str)
     return e;
 }
 
-int
+bool
 snmpCreateOidFromStr(const char *str, oid **name, int *nl)
 {
     char const *delim = ".";
-    char *p;
 
     *name = NULL;
     *nl = 0;
-    char *s = xstrdup(str);
-    char *s_ = s;
+    const char *s = str;
 
     /* Parse the OID string into oid bits */
-    while ( (p = strsep(&s_, delim)) != NULL) {
+    while (size_t len = strcspn(s, delim)) {
         *name = (oid*)xrealloc(*name, sizeof(oid) * ((*nl) + 1));
-        (*name)[*nl] = atoi(p);
+        (*name)[*nl] = atoi(s); // stops at the '.' delimiter
         ++(*nl);
+        // exit with true when the last octet has been parsed
+        if (s[len] == '\0')
+            return true;
+        s += len+1;
     }
 
-    xfree(s);
-    return 1;
+    // if we aborted before the lst octet was found, return false.
+    safe_free(name);
+    return false;
 }
 
 /*

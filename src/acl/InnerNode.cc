@@ -2,6 +2,7 @@
 #include "acl/Acl.h"
 #include "acl/BoolOps.h"
 #include "acl/Checklist.h"
+#include "acl/Gadgets.h"
 #include "acl/InnerNode.h"
 #include "cache_cf.h"
 #include "ConfigParser.h"
@@ -9,22 +10,6 @@
 #include "globals.h"
 #include "wordlist.h"
 #include <algorithm>
-
-// "delete acl" class to use with std::for_each() in InnerNode::~InnerNode()
-class AclDeleter
-{
-public:
-    void operator()(ACL* acl) {
-        // Do not delete explicit ACLs; they are maintained by Config.aclList.
-        if (acl && !acl->registered)
-            delete acl;
-    }
-};
-
-Acl::InnerNode::~InnerNode()
-{
-    std::for_each(nodes.begin(), nodes.end(), AclDeleter());
-}
 
 void
 Acl::InnerNode::prepareForUse()
@@ -43,6 +28,7 @@ Acl::InnerNode::add(ACL *node)
 {
     assert(node != NULL);
     nodes.push_back(node);
+    aclRegister(node);
 }
 
 // one call parses one "acl name acltype name1 name2 ..." line

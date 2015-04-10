@@ -34,6 +34,17 @@
 #endif
 #endif
 
+/* Solaris 10 has a broken definition for minor_t in IPFilter compat.
+ * We must pre-define before doing anything with OS headers so the OS
+ * do not. Then un-define it before using the IPFilter *_compat.h headers.
+ */
+#if IPF_TRANSPARENT && USE_SOLARIS_IPFILTER_MINOR_T_HACK
+/* But we only need do this nasty thing for src/ip/Intercept.cc */
+#if BUILDING_SQUID_IP_INTERCEPT_CC
+#define minor_t solaris_minor_t_fubar
+#endif
+#endif
+
 /*****************************************************/
 /* FDSETSIZE is messy and needs to be done before    */
 /* sys/types.h are defined.                          */
@@ -56,6 +67,7 @@
 /*****************************************************/
 
 #include "compat/os/aix.h"
+#include "compat/os/android.h"
 #include "compat/os/dragonfly.h"
 #include "compat/os/freebsd.h"
 #include "compat/os/hpux.h"
@@ -93,18 +105,12 @@
 /* Valgrind API macros changed between two versions squid supports */
 #include "compat/valgrind.h"
 
-/* Endian functions are usualy handled by the OS but not always. */
-#include "squid_endian.h"
-
 /**
  * A Regular Expression library is bundled with Squid.
  * Default is to use a system provided one, but the bundle
  * may be used instead with explicit configuration.
  */
 #include "compat/GnuRegex.h"
-
-/* some functions are unsafe to be used in Squid. */
-#include "compat/unsafe.h"
 
 /* cppunit is not quite C++0x compatible yet */
 #include "compat/cppunit.h"

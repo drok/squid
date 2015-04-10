@@ -1367,9 +1367,7 @@ ClientSocketContext::buildRangeHeader(HttpReply * rep)
          * offset data, but we won't be requesting it.
          * So, we can either re-request, or generate an error
          */
-        debugs(33, 3, "clientBuildRangeHeader: will not do ranges: " << range_err << ".");
-        delete http->request->range;
-        http->request->range = NULL;
+        http->request->ignoreRange(range_err);
     } else {
         /* XXX: TODO: Review, this unconditional set may be wrong. */
         rep->sline.set(rep->sline.version, Http::scPartialContent);
@@ -1748,9 +1746,16 @@ ClientSocketContext::canPackMoreRanges() const
 int64_t
 ClientSocketContext::getNextRangeOffset() const
 {
+    debugs (33, 5, "range: " << http->request->range <<
+            "; http offset " << http->out.offset <<
+            "; reply " << reply);
+
+    // XXX: This method is called from many places, including pullData() which
+    // may be called before prepareReply() [on some Squid-generated errors].
+    // Hence, we may not even know yet whether we should honor/do ranges.
+
     if (http->request->range) {
         /* offset in range specs does not count the prefix of an http msg */
-        debugs (33, 5, "ClientSocketContext::getNextRangeOffset: http offset " << http->out.offset);
         /* check: reply was parsed and range iterator was initialized */
         assert(http->range_iter.valid);
         /* filter out data according to range specs */
@@ -1787,7 +1792,7 @@ ClientSocketContext::getNextRangeOffset() const
 void
 ClientSocketContext::pullData()
 {
-    debugs(33, 5, HERE << clientConnection << " attempting to pull upstream data");
+    debugs(33, 5, reply << " written " << http->out.size << " into " << clientConnection);
 
     /* More data will be coming from the stream. */
     StoreIOBuffer readBuffer;
@@ -2579,7 +2584,7 @@ bool ConnStateData::serveDelayedError(ClientSocketContext *context)
         clientReplyContext *repContext = dynamic_cast<clientReplyContext *>(node->data.getRaw());
         assert(repContext);
         debugs(33, 5, "Responding with delated error for " << http->uri);
-        repContext->setReplyToStoreEntry(sslServerBump->entry);
+        repContext->setReplyToStoreEntry(sslServerBump->entry, "delayed SslBump error");
 
         // save the original request for logging purposes
         if (!context->http->al->request) {
@@ -2860,6 +2865,10 @@ clientProcessRequest(ConnStateData *conn, HttpParser *hp, ClientSocketContext *c
     if (http->request->method == Http::METHOD_CONNECT) {
         context->mayUseConnection(true);
         conn->flags.readMore = false;
+
+        // consume header early so that tunnel gets just the body
+        connNoteUseOfBuffer(conn, http->req_sz);
+        notedUseOfBuffer = true;
     }
 
 #if USE_SSL
@@ -2885,7 +2894,7 @@ clientProcessRequest(ConnStateData *conn, HttpParser *hp, ClientSocketContext *c
             assert (repContext);
             conn->quitAfterError(request.getRaw());
             repContext->setReplyToError(ERR_TOO_BIG,
-                                        Http::scRequestEntityTooLarge, Http::METHOD_NONE, NULL,
+                                        Http::scPayloadTooLarge, Http::METHOD_NONE, NULL,
                                         conn->clientConnection->remote, http->request, NULL, NULL);
             assert(context->http->out.offset == 0);
             context->pullData();
@@ -3250,7 +3259,7 @@ ConnStateData::abortChunkedRequestBody(const err_type error)
         clientReplyContext *repContext = dynamic_cast<clientReplyContext*>(node->data.getRaw());
         assert(repContext);
         const Http::StatusCode scode = (error == ERR_TOO_BIG) ?
-                                       Http::scRequestEntityTooLarge : HTTP_BAD_REQUEST;
+                                       Http::scPayloadTooLarge : HTTP_BAD_REQUEST;
         repContext->setReplyToError(error, scode,
                                     repContext->http->request->method,
                                     repContext->http->uri,
@@ -3889,9 +3898,9 @@ ConnStateData::getSslContextStart()
         assert(sslBumpCertKey.defined() && sslBumpCertKey[0] != '\0');
 
         debugs(33, 5, HERE << "Finding SSL certificate for " << sslBumpCertKey << " in cache");
-        Ssl::LocalContextStorage & ssl_ctx_cache(Ssl::TheGlobalContextStorage.getLocalStorage(port->s));
+        Ssl::LocalContextStorage *ssl_ctx_cache = Ssl::TheGlobalContextStorage.getLocalStorage(port->s);
         SSL_CTX * dynCtx = NULL;
-        Ssl::SSL_CTX_Pointer *cachedCtx = ssl_ctx_cache.get(sslBumpCertKey.termedBuf());
+        Ssl::SSL_CTX_Pointer *cachedCtx = ssl_ctx_cache ? ssl_ctx_cache->get(sslBumpCertKey.termedBuf()) : NULL;
         if (cachedCtx && (dynCtx = cachedCtx->get())) {
             debugs(33, 5, HERE << "SSL certificate for " << sslBumpCertKey << " have found in cache");
             if (Ssl::verifySslCertificate(dynCtx, certProperties)) {
@@ -3900,7 +3909,8 @@ ConnStateData::getSslContextStart()
                 return;
             } else {
                 debugs(33, 5, HERE << "Cached SSL certificate for " << sslBumpCertKey << " is out of date. Delete this certificate from cache");
-                ssl_ctx_cache.del(sslBumpCertKey.termedBuf());
+                if (ssl_ctx_cache)
+                    ssl_ctx_cache->del(sslBumpCertKey.termedBuf());
             }
         } else {
             debugs(33, 5, HERE << "SSL certificate for " << sslBumpCertKey << " haven't found in cache");
@@ -3952,10 +3962,10 @@ ConnStateData::getSslContextDone(SSL_CTX * sslContext, bool isNew)
         }
         //else it is self-signed or untrusted do not attrach any certificate
 
-        Ssl::LocalContextStorage & ssl_ctx_cache(Ssl::TheGlobalContextStorage.getLocalStorage(port->s));
+        Ssl::LocalContextStorage *ssl_ctx_cache = Ssl::TheGlobalContextStorage.getLocalStorage(port->s);
         assert(sslBumpCertKey.defined() && sslBumpCertKey[0] != '\0');
         if (sslContext) {
-            if (!ssl_ctx_cache.add(sslBumpCertKey.termedBuf(), new Ssl::SSL_CTX_Pointer(sslContext))) {
+            if (!ssl_ctx_cache || !ssl_ctx_cache->add(sslBumpCertKey.termedBuf(), new Ssl::SSL_CTX_Pointer(sslContext))) {
                 // If it is not in storage delete after using. Else storage deleted it.
                 fd_table[clientConnection->fd].dynamicSslContext = sslContext;
             }
@@ -3979,7 +3989,13 @@ ConnStateData::getSslContextDone(SSL_CTX * sslContext, bool isNew)
     if (!httpsCreate(clientConnection, sslContext))
         return;
 
-    // commSetConnTimeout() was called for this request before we switched.
+    // bumped intercepted conns should already have Config.Timeout.request set
+    // but forwarded connections may only have Config.Timeout.lifetime. [Re]set
+    // to make sure the connection does not get stuck on non-SSL clients.
+    typedef CommCbMemFunT<ConnStateData, CommTimeoutCbParams> TimeoutDialer;
+    AsyncCall::Pointer timeoutCall = JobCallback(33, 5, TimeoutDialer,
+                                     this, ConnStateData::requestTimeout);
+    commSetConnTimeout(clientConnection, Config.Timeout.request, timeoutCall);
 
     // Disable the client read handler until CachePeer selection is complete
     Comm::SetSelect(clientConnection->fd, COMM_SELECT_READ, NULL, NULL, 0);

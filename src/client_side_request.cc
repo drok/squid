@@ -1294,7 +1294,8 @@ ClientRequestContext::clientRedirectDone(const Helper::Reply &reply)
                     // update the current working ClientHttpRequest fields
                     safe_free(http->uri);
                     http->uri = xstrdup(urlCanonical(new_request));
-                    HTTPMSGUNLOCK(old_request);
+                    // HTTPMSGUNLOCK(old_request);
+                    http->requested = old_request; // Ie, The client requested... - if SSL bumped, the certificate for the requested, not redirected site is sent to the client
                     http->request = new_request;
                     HTTPMSGLOCK(http->request);
                 } else {

@@ -66,6 +66,7 @@ public:
      */
     Comm::ConnectionPointer clientConnection;
 
+    HttpRequest *requested;		/* Original requested URL (pre-redirect), if different than request... */
     HttpRequest *request;       /* Parsed URL ... */
     char *uri;
     char *log_uri;

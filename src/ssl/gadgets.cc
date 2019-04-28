@@ -388,10 +388,11 @@ static bool generateFakeSslCertificate(Ssl::X509_Pointer & certToStore, Ssl::EVP
         return false;
 
     /*Now sign the request */
-    if (properties.signAlgorithm != Ssl::algSignSelf && properties.signWithPkey.get())
-        ret = X509_sign(cert.get(), properties.signWithPkey.get(), EVP_sha1());
+    if (properties.signAlgorithm != Ssl::algSignSelf && properties.signWithPkey.get()) {
+        ret = X509_sign(cert.get(), properties.signWithPkey.get(), EVP_sha256());
+		}
     else //else sign with self key (self signed request)
-        ret = X509_sign(cert.get(), pkey.get(), EVP_sha1());
+        ret = X509_sign(cert.get(), pkey.get(), EVP_sha256());
 
     if (!ret)
         return false;
@@ -454,11 +455,8 @@ static BIGNUM *x509Pubkeydigest(Ssl::X509_Pointer const & cert)
 
 /// Generate a unique serial number based on a Ssl::CertificateProperties object
 /// for a new generated certificate
-static bool createSerial(Ssl::BIGNUM_Pointer &serial, Ssl::CertificateProperties const &properties)
+static bool createSerial(Ssl::BIGNUM_Pointer &serial, Ssl::CertificateProperties const &properties, Ssl::X509_Pointer & fakeCert, Ssl::EVP_PKEY_Pointer & fakePkey)
 {
-    Ssl::EVP_PKEY_Pointer fakePkey;
-    Ssl::X509_Pointer fakeCert;
-
     serial.reset(x509Pubkeydigest(properties.signWithX509));
     if (!serial.get()) {
         serial.reset(BN_new());
@@ -482,10 +480,10 @@ bool Ssl::generateSslCertificate(Ssl::X509_Pointer & certToStore, Ssl::EVP_PKEY_
 {
     Ssl::BIGNUM_Pointer serial;
 
-    if (!createSerial(serial, properties))
+    if (!createSerial(serial, properties, certToStore, pkeyToStore))
         return false;
 
-    return  generateFakeSslCertificate(certToStore, pkeyToStore, properties, serial);
+		return true;
 }
 
 /**
